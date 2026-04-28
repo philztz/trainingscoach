@@ -1,117 +1,116 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Trainingscoach" />
-  <meta name="theme-color" content="#030712" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Trainingscoach"/>
+  <meta name="theme-color" content="#030712"/>
   <title>Trainingscoach</title>
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; background: #030712; color: #e2e8f0; }
-    body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-    input, button, textarea { -webkit-appearance: none; font-size: 16px !important; }
-    #root { min-height: 100vh; }
-    #loading { display:flex; align-items:center; justify-content:center; height:100vh; 
-               color:#4ade80; font-family:monospace; font-size:16px; flex-direction:column; gap:12px; }
-    #settings-overlay {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      z-index: 9999; align-items: center; justify-content: center; padding: 20px;
-    }
-    #settings-overlay.open { display: flex; }
-    #settings-box {
-      background: #1e293b; border: 1px solid #334155; border-radius: 20px;
-      padding: 28px 24px; width: 100%; max-width: 380px;
-    }
-    #settings-box h2 { color: #f8fafc; font-size: 18px; margin-bottom: 6px; font-family: monospace; }
-    #settings-box p { color: #64748b; font-size: 13px; margin-bottom: 20px; line-height: 1.6; font-family: monospace; }
-    #api-key-input {
-      width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid #334155;
-      border-radius: 10px; color: #f8fafc; font-size: 14px; font-family: monospace;
-      outline: none; margin-bottom: 12px;
-    }
-    .settings-btn {
-      width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 14px;
-      font-family: monospace; font-weight: 700; cursor: pointer; margin-bottom: 10px;
-    }
-    #settings-status { font-size: 12px; color: #4ade80; margin-top: 8px; text-align: center; font-family: monospace; min-height: 20px; }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%;background:#030712;color:#e2e8f0}
+    body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+    input,button,textarea{-webkit-appearance:none;font-size:16px!important}
+    #root{min-height:100vh}
+    #loading{display:flex;align-items:center;justify-content:center;height:100vh;
+             color:#4ade80;font-family:monospace;font-size:16px;flex-direction:column;gap:12px}
+    #settings-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+      z-index:9999;align-items:center;justify-content:center;padding:20px}
+    #settings-overlay.open{display:flex}
+    #settings-box{background:#1e293b;border:1px solid #334155;border-radius:20px;
+      padding:28px 24px;width:100%;max-width:380px}
+    #settings-box h2{color:#f8fafc;font-size:18px;margin-bottom:6px;font-family:monospace}
+    #settings-box p{color:#64748b;font-size:13px;margin-bottom:20px;line-height:1.6;font-family:monospace}
+    #api-key-input{width:100%;padding:12px 14px;background:#0f172a;border:1px solid #334155;
+      border-radius:10px;color:#f8fafc;font-size:14px;font-family:monospace;outline:none;margin-bottom:12px}
+    .sbtn{width:100%;padding:13px;border:none;border-radius:10px;font-size:14px;
+      font-family:monospace;font-weight:700;cursor:pointer;margin-bottom:10px}
+    #settings-status{font-size:12px;color:#4ade80;margin-top:8px;text-align:center;font-family:monospace;min-height:20px}
   </style>
 </head>
 <body>
-  <div id="settings-overlay">
-    <div id="settings-box">
-      <h2>🔑 API-Key einrichten</h2>
-      <p>Für die KI-Analyse benötigst du einen Anthropic API-Key.<br><br>
-         Kostenlos erstellen auf:<br><b style="color:#818cf8">console.anthropic.com</b><br><br>
-         (ca. 1–2€/Monat bei täglicher Nutzung)</p>
-      <input id="api-key-input" type="password" placeholder="sk-ant-..." />
-      <button class="settings-btn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white" onclick="saveApiKey()">💾 Key speichern</button>
-      <button class="settings-btn" style="background:#0f172a;color:#64748b;border:1px solid #334155;margin-bottom:0" onclick="closeSettings()">Schließen</button>
-      <div id="settings-status"></div>
-    </div>
+<div id="settings-overlay">
+  <div id="settings-box">
+    <h2>🔑 API-Key einrichten</h2>
+    <p>Für die KI-Analyse benötigst du einen Anthropic API-Key.<br><br>
+       Kostenlos unter: <b style="color:#818cf8">console.anthropic.com</b><br><br>
+       (ca. 1–2€/Monat bei täglicher Nutzung)</p>
+    <input id="api-key-input" type="password" placeholder="sk-ant-..."/>
+    <button class="sbtn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white" onclick="saveApiKey()">💾 Key speichern</button>
+    <button class="sbtn" style="background:#0f172a;color:#64748b;border:1px solid #334155;margin-bottom:0" onclick="closeSettings()">Schließen</button>
+    <div id="settings-status"></div>
   </div>
+</div>
 
-  <div id="loading">
-    <div style="font-size:32px">🚴</div>
-    <div>Trainingscoach lädt...</div>
-  </div>
-  <div id="root" style="display:none"></div>
+<div id="loading">
+  <div style="font-size:40px">🚴</div>
+  <div>Trainingscoach lädt...</div>
+  <div id="load-status" style="font-size:12px;color:#475569;margin-top:4px">Bitte warten</div>
+</div>
+<div id="root" style="display:none"></div>
 
-  <script>
-    function getApiKey() { return localStorage.getItem("anthropic_api_key") || ""; }
-    function saveApiKey() {
-      const key = document.getElementById("api-key-input").value.trim();
-      if (!key.startsWith("sk-ant-")) {
-        document.getElementById("settings-status").textContent = "⚠️ Key muss mit sk-ant- beginnen";
-        document.getElementById("settings-status").style.color = "#fb7185";
-        return;
-      }
-      localStorage.setItem("anthropic_api_key", key);
-      document.getElementById("settings-status").textContent = "✅ Gespeichert!";
-      setTimeout(closeSettings, 1000);
+<script>
+  function getApiKey(){return localStorage.getItem("anthropic_api_key")||""}
+  function saveApiKey(){
+    const k=document.getElementById("api-key-input").value.trim();
+    if(!k.startsWith("sk-ant-")){
+      document.getElementById("settings-status").textContent="⚠️ Key muss mit sk-ant- beginnen";
+      document.getElementById("settings-status").style.color="#fb7185";return;
     }
-    function openSettings() {
-      document.getElementById("api-key-input").value = getApiKey();
-      document.getElementById("settings-status").textContent = "";
-      document.getElementById("settings-overlay").classList.add("open");
-    }
-    function closeSettings() {
-      document.getElementById("settings-overlay").classList.remove("open");
-    }
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(()=>{}));
-    }
-  </script>
+    localStorage.setItem("anthropic_api_key",k);
+    document.getElementById("settings-status").textContent="✅ Gespeichert!";
+    setTimeout(closeSettings,1000);
+  }
+  function openSettings(){
+    document.getElementById("api-key-input").value=getApiKey();
+    document.getElementById("settings-status").textContent="";
+    document.getElementById("settings-overlay").classList.add("open");
+  }
+  function closeSettings(){document.getElementById("settings-overlay").classList.remove("open")}
+  if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 
-  <!-- React 18 -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel standalone - load async, show loading indicator -->
-  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js" onload="initApp()" onerror="showError()"></script>
+  function setLoadStatus(msg){document.getElementById("load-status").textContent=msg}
 
-  <script>
-    function showError() {
-      document.getElementById("loading").innerHTML = 
-        '<div style="font-size:32px">❌</div><div>Ladefehler – bitte Seite neu laden</div>' +
-        '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer">🔄 Neu laden</button>';
+  function initApp(){
+    try{
+      setLoadStatus("Initialisiere App...");
+      const code=document.getElementById("app-code").textContent;
+      const transformed=Babel.transform(code,{presets:["react"],filename:"app.jsx"}).code;
+      const fn=new Function("React","ReactDOM","openSettings","getApiKey",transformed+"\nreturn TrainingsApp;");
+      const App=fn(React,ReactDOM,openSettings,getApiKey);
+      document.getElementById("loading").style.display="none";
+      document.getElementById("root").style.display="block";
+      ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+    }catch(e){
+      document.getElementById("loading").innerHTML=
+        '<div style="font-size:32px">❌</div><div style="color:#fb7185">Fehler: '+e.message+'</div>'+
+        '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:monospace">🔄 Neu laden</button>';
     }
+  }
 
-    function initApp() {
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("root").style.display = "block";
+  // Load React first, then Babel, then init
+  function loadScript(src, cb){
+    const s=document.createElement("script");
+    s.src=src; s.crossOrigin="anonymous";
+    s.onload=cb; s.onerror=()=>setLoadStatus("Ladefehler: "+src.split("/").pop());
+    document.head.appendChild(s);
+  }
 
-      const code = document.getElementById("app-code").textContent;
-      const transformed = Babel.transform(code, { presets: ["react"] }).code;
-      const fn = new Function("React", "ReactDOM", "openSettings", "getApiKey", transformed);
-      fn(React, ReactDOM, openSettings, getApiKey);
-    }
-  </script>
+  setLoadStatus("Lade React...");
+  loadScript("https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js", ()=>{
+    setLoadStatus("Lade ReactDOM...");
+    loadScript("https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js", ()=>{
+      setLoadStatus("Lade Babel (kann 5–10 Sek dauern)...");
+      loadScript("https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js", initApp);
+    });
+  });
+</script>
 
-  <script id="app-code" type="text/plain">
+<script id="app-code" type="text/plain">
 const PLAN = [
   // Phase 1 – Reaktivierung
   { date: "2026-04-07", phase: "Phase 1 – Reaktivierung", type: "ride", label: "Z2 Ausfahrt", description: "1,5h lockere Z2-Ausfahrt outdoor. Beine wecken, kein Druck.", duration: 90, zone: "Z2", rpe_target: "5–6" },
@@ -216,7 +215,7 @@ function saveStorage(key, val) {
 const ZONES = ["Z1","Z2","Z3","Z4","Z5","Max","–"];
 const RPE_LABELS = ["1 – sehr locker","2","3","4","5 – moderat","6","7","8 – hart","9","10 – Maximum"];
 
-export default function TrainingsApp() {
+function TrainingsApp() {
   const [today] = useState(getTodayStr());
   const [selectedDate, setSelectedDate] = useState(today);
   const [logs, setLogs] = useState(() => loadStorage("training_logs_v1", {}));
@@ -309,7 +308,7 @@ Passe NUR Einheiten an die wirklich geändert werden müssen. Vereinstraining (M
 Antworte AUSSCHLIESSLICH mit diesem JSON ohne jeglichen Text davor oder danach:
 {"summary":"2-3 Sätze Gesamtanalyse auf Deutsch","fitness_trend":"steigend|stabil|abnehmend","recovery_status":"erholt|moderat|müde|überbelastet","load_balance":"optimal|zu_hoch|zu_niedrig","adjustments":[{"date":"YYYY-MM-DD","label":"Titel","type":"ride|intervals|strength|run|rest|mobility|hiit|test","description":"Details auf Deutsch","duration":90,"zone":"Z1-Z5 oder –","rpe_target":"5-6","adjustment_reason":"Begründung 1 Satz"}]}`;
     try {
-      const apiKey = getApiKey(); if (!apiKey) { openSettings(); throw new Error("Kein API-Key"); } const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const apiKey = getApiKey(); if (!apiKey) { openSettings(); throw new Error("Kein API-Key gesetzt"); } const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
         body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 4000, messages: [{ role: "user", content: prompt }] })
@@ -716,9 +715,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON ohne jeglichen Text davor oder danach:
   );
 }
 
-
-  const root = ReactDOM.createRoot(document.getElementById("root"));
-  root.render(React.createElement(TrainingsApp));
-  </script>
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(TrainingsApp));
+</script>
 </body>
 </html>
