@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Trainingscoach" />
+  <meta name="theme-color" content="#030712" />
+  <title>Trainingscoach</title>
+  <link rel="manifest" href="/manifest.json" />
+  <!-- Apple Touch Icons (werden als App-Icon verwendet) -->
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: #030712; }
+    body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+    input, button, textarea { -webkit-appearance: none; }
+    /* Prevent zoom on input focus on iOS */
+    input, textarea, select { font-size: 16px !important; }
+    #root { min-height: 100vh; }
+
+    /* Settings overlay */
+    #settings-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 9999; align-items: center; justify-content: center; padding: 20px;
+    }
+    #settings-overlay.open { display: flex; }
+    #settings-box {
+      background: #1e293b; border: 1px solid #334155; border-radius: 20px;
+      padding: 28px 24px; width: 100%; max-width: 380px;
+    }
+    #settings-box h2 { color: #f8fafc; font-size: 18px; margin-bottom: 6px; font-family: monospace; }
+    #settings-box p { color: #64748b; font-size: 13px; margin-bottom: 20px; line-height: 1.6; font-family: monospace; }
+    #api-key-input {
+      width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid #334155;
+      border-radius: 10px; color: #f8fafc; font-size: 14px; font-family: monospace;
+      outline: none; margin-bottom: 12px;
+    }
+    #save-key-btn {
+      width: 100%; padding: 13px; background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white; border: none; border-radius: 10px; font-size: 14px;
+      font-family: monospace; font-weight: 700; cursor: pointer; margin-bottom: 10px;
+    }
+    #close-settings-btn {
+      width: 100%; padding: 11px; background: #0f172a; color: #64748b;
+      border: 1px solid #334155; border-radius: 10px; font-size: 13px;
+      font-family: monospace; cursor: pointer;
+    }
+    #settings-status { font-size: 12px; color: #4ade80; margin-top: 8px; text-align: center; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <!-- Settings Overlay -->
+  <div id="settings-overlay">
+    <div id="settings-box">
+      <h2>🔑 API-Key einrichten</h2>
+      <p>
+        Für die KI-Analyse benötigst du einen Anthropic API-Key.<br><br>
+        Kostenlos erstellen auf: <b style="color:#818cf8">console.anthropic.com</b><br>
+        (ca. 1–2€/Monat bei täglicher Nutzung)
+      </p>
+      <input id="api-key-input" type="password" placeholder="sk-ant-..." />
+      <button id="save-key-btn" onclick="saveApiKey()">💾 Key speichern</button>
+      <button id="close-settings-btn" onclick="closeSettings()">Schließen</button>
+      <div id="settings-status"></div>
+    </div>
+  </div>
+
+  <div id="root"></div>
+
+  <!-- React + Babel via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    // ── API Key management ──
+    function getApiKey() { return localStorage.getItem("anthropic_api_key") || ""; }
+    function saveApiKey() {
+      const key = document.getElementById("api-key-input").value.trim();
+      if (!key.startsWith("sk-ant-")) {
+        document.getElementById("settings-status").textContent = "⚠️ Key muss mit sk-ant- beginnen";
+        document.getElementById("settings-status").style.color = "#fb7185";
+        return;
+      }
+      localStorage.setItem("anthropic_api_key", key);
+      document.getElementById("settings-status").textContent = "✅ Key gespeichert!";
+      document.getElementById("settings-status").style.color = "#4ade80";
+      setTimeout(closeSettings, 1200);
+    }
+    function openSettings() {
+      document.getElementById("api-key-input").value = getApiKey();
+      document.getElementById("settings-status").textContent = "";
+      document.getElementById("settings-overlay").classList.add("open");
+    }
+    function closeSettings() {
+      document.getElementById("settings-overlay").classList.remove("open");
+    }
+
+    // ── Service Worker ──
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
+    }
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Inject API key from localStorage into fetch calls
+    const originalFetch = window.fetch;
+    window.anthropicFetch = async (url, options) => {
+      const key = localStorage.getItem("anthropic_api_key") || "";
+      if (!key) {
+        openSettings();
+        throw new Error("Kein API-Key gesetzt. Bitte in Einstellungen eintragen.");
+      }
+      return originalFetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          "x-api-key": key,
+        }
+      });
+    };
+
+const PLAN = [
+  // Phase 1 – Reaktivierung
+  { date: "2026-04-07", phase: "Phase 1 – Reaktivierung", type: "ride", label: "Z2 Ausfahrt", description: "1,5h lockere Z2-Ausfahrt outdoor. Beine wecken, kein Druck.", duration: 90, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-04-08", phase: "Phase 1 – Reaktivierung", type: "ride", label: "🏅 Vereinstraining", description: "60km Z2 mit gemischten Peaks. Lass die Gruppe das Tempo bestimmen. Die Peaks liefern die Intensitätsreize dieser Woche.", duration: 120, zone: "Z2 + Peaks", rpe_target: "6–8" },
+  { date: "2026-04-09", phase: "Phase 1 – Reaktivierung", type: "rest", label: "Ruhetag – Erholung 💤", description: "Nach dem gestrigen intensiven Training: volle Erholung. Kein Sport. Viel trinken, gut schlafen. Der Körper braucht das.", duration: 0, zone: "–", rpe_target: "–" },
+
+  // Phase 2 – Reise I
+  { date: "2026-04-10", phase: "Phase 2 – Reise I", type: "rest", label: "Reisetag – Ruhe 🧳", description: "Kein Training heute. Reisen ist anstrengend genug. Optional: 10 Min Stretching oder Mobility wenn du magst.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-04-11", phase: "Phase 2 – Reise I", type: "run", label: "Lockeres Laufen", description: "20–30 Min lockeres Laufen (Z1/Z2), danach 10 Min Mobility.", duration: 40, zone: "Z1–Z2", rpe_target: "4–5" },
+  { date: "2026-04-12", phase: "Phase 2 – Reise I", type: "strength", label: "Bodyweight Circuit", description: "3 Runden: Kniebeuge, Ausfallschritte, Glute Bridge, Plank – je 45 Sek. Pause 15 Sek zwischen Übungen, 2 Min zwischen Runden.", duration: 30, zone: "–", rpe_target: "6–7" },
+  { date: "2026-04-13", phase: "Phase 2 – Reise I", type: "rest", label: "Ruhetag", description: "Aktive Erholung: Spaziergang oder kurze Mobility-Session.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-04-14", phase: "Phase 2 – Reise I", type: "run", label: "Laufen + Strides", description: "30 Min Laufen, etwas flotter als die Tage zuvor. Am Ende 6×15 Sek anziehen (Strides) mit je 1 Min lockern dazwischen.", duration: 45, zone: "Z2–Z3", rpe_target: "6–7" },
+
+  // Puffer-Tage
+  { date: "2026-04-15", phase: "Puffer", type: "ride", label: "🏅 Vereinstraining", description: "60km Z2 mit gemischten Peaks. Erste Einheit nach der Reisewoche – Vereinstraining ist perfekt zum Wiederreinkommen.", duration: 120, zone: "Z2 + Peaks", rpe_target: "6–8" },
+  { date: "2026-04-16", phase: "Puffer", type: "rest", label: "Ruhe vor Urlaub", description: "Ruhetag oder kurze Mobility vor dem Urlaub.", duration: 0, zone: "–", rpe_target: "–" },
+
+  // Phase 3 – Urlaub
+  { date: "2026-04-17", phase: "Phase 3 – Urlaub", type: "mobility", label: "Mobility – Hüfte & Rücken", description: "20 Min: Couch Stretch (2×2 Min/Seite), Pigeon Pose, 90/90-Stretch, Cat-Cow. Ideal morgens.", duration: 20, zone: "–", rpe_target: "2–3" },
+  { date: "2026-04-18", phase: "Phase 3 – Urlaub", type: "strength", label: "Hotel-Kraft", description: "20 Min: Kniebeuge 3×15, Einbeinige Hip Thrust 3×12/Seite, Plank 3×45 Sek, Side Plank 2×30 Sek/Seite.", duration: 20, zone: "–", rpe_target: "6–7" },
+  { date: "2026-04-19", phase: "Phase 3 – Urlaub", type: "hiit", label: "Mini-HIIT + Core", description: "8× (20 Sek Burpees / 10 Sek Pause) = 4 Min. Danach: 3× Hollow Body Hold 30 Sek, 3× Dead Bug 10 Wdh.", duration: 20, zone: "Z4–Z5", rpe_target: "7–8" },
+  { date: "2026-04-20", phase: "Phase 3 – Urlaub", type: "rest", label: "Abreise – Ruhe", description: "Ruhetag. Optional 10 Min Mobility.", duration: 0, zone: "–", rpe_target: "–" },
+
+  // Phase 4 – Aufbaublock I Woche 1
+  { date: "2026-04-21", phase: "Phase 4 – Aufbau I", type: "test", label: "Ramp-Test 🔬", description: "FTP-Baseline als Feldtest outdoor. 10 Min Warm-up, dann einen langen Anstieg oder ruhigen Streckenabschnitt wählen: jede Minute das Tempo steigern bis zum Abbruch. FTP ≈ 75% der letzten vollständigen Minute. Nach Urlaub gut erholt – idealer Zeitpunkt!", duration: 60, zone: "Max", rpe_target: "10 (Ende)" },
+  { date: "2026-04-22", phase: "Phase 4 – Aufbau I", type: "ride", label: "🏅 Vereinstraining", description: "60km Z2 mit gemischten Peaks. Die Peaks ersetzen die geplanten Intervalle – volle Energie rein!", duration: 120, zone: "Z2 + Peaks", rpe_target: "6–8" },
+  { date: "2026-04-23", phase: "Phase 4 – Aufbau I", type: "intervals", label: "4×8 Min Z3 – Outdoor", description: "10 Min Warm-up, dann 4×8 Min Z3 (76–90% FTP) mit je 2 Min Pause – auf einer flachen bis leicht hügeligen Strecke. 10 Min Cool-down. Einen Tag nach dem Vereinstraining – Beine sollten wieder frisch sein.", duration: 75, zone: "Z3", rpe_target: "7" },
+  { date: "2026-04-24", phase: "Phase 4 – Aufbau I", type: "strength", label: "Terraband-Kraft", description: "Einbeinige Kniebeuge mit Band, Hip Thrust mit Band, Clamshells, Pallof Press, Rudern mit Band. 3 Runden je Übung.", duration: 40, zone: "–", rpe_target: "6–7" },
+  { date: "2026-04-25", phase: "Phase 4 – Aufbau I", type: "rest", label: "Ruhe oder Mobility", description: "Aktive Erholung, 15–20 Min Mobility optional.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-04-26", phase: "Phase 4 – Aufbau I", type: "ride", label: "Lange Ausfahrt Z2", description: "3,5h Z2 Outdoor. Stabiles Tempo, nicht zu hoch treiben.", duration: 210, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-04-27", phase: "Phase 4 – Aufbau I", type: "ride", label: "MTB/Gravel locker", description: "2h MTB oder Gravel, locker. Spaßfaktor erlaubt!", duration: 120, zone: "Z1–Z2", rpe_target: "4–6" },
+
+  // Phase 4 – Woche 2
+  { date: "2026-04-28", phase: "Phase 4 – Aufbau I", type: "rest", label: "Ruhetag", description: "Erholung. Optional Spaziergang.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-04-29", phase: "Phase 4 – Aufbau I", type: "ride", label: "🏅 Vereinstraining", description: "60km Z2 mit gemischten Peaks. Die Peaks liefern die Schwellenreize dieser Woche.", duration: 120, zone: "Z2 + Peaks", rpe_target: "6–8" },
+  { date: "2026-04-30", phase: "Phase 4 – Aufbau I", type: "intervals", label: "3×12 Min Z4 – Schwelle", description: "10 Min Warm-up, 3×12 Min Z4 (91–105% FTP) mit je 5 Min Pause. 10 Min Cool-down. Einen Tag nach dem Vereinstraining – Pace konsequent halten.", duration: 85, zone: "Z4", rpe_target: "8" },
+  { date: "2026-05-01", phase: "Phase 4 – Aufbau I", type: "strength", label: "Terraband-Kraft", description: "Gleiche Übungen wie Woche 1, leicht mehr Widerstand oder Wdh.", duration: 40, zone: "–", rpe_target: "6–7" },
+  { date: "2026-05-02", phase: "Phase 4 – Aufbau I", type: "rest", label: "Ruhe", description: "Erholung.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-05-03", phase: "Phase 4 – Aufbau I", type: "ride", label: "4h Z2 mit Tempo-Einlagen", description: "4h Outdoor. Nach 1h Warm-up: 2×20 Min Z3 eingebaut. Rest Z2.", duration: 240, zone: "Z2–Z3", rpe_target: "6–7" },
+  { date: "2026-05-04", phase: "Phase 4 – Aufbau I", type: "ride", label: "Gravel locker", description: "2h Gravel, locker.",  duration: 120, zone: "Z1–Z2", rpe_target: "4–5" },
+
+  // Phase 5 – Entlastung
+  { date: "2026-05-05", phase: "Phase 5 – Entlastung ⬇️", type: "rest", label: "Ruhetag", description: "Pflicht-Ruhe. Hier passiert die Adaptation!", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-05-06", phase: "Phase 5 – Entlastung ⬇️", type: "ride", label: "🏅 Vereinstraining (reduziert)", description: "60km Z2 mit gemischten Peaks. Entlastungswoche: bewusst hinter der Gruppe bleiben bei den Peaks, nicht ans Limit gehen. 70–80% der normalen Intensität.", duration: 120, zone: "Z2 + leichte Peaks", rpe_target: "6–7" },
+  { date: "2026-05-07", phase: "Phase 5 – Entlastung ⬇️", type: "ride", label: "Z2 kurz", description: "1,5h Z2, wirklich locker.", duration: 90, zone: "Z2", rpe_target: "5" },
+  { date: "2026-05-08", phase: "Phase 5 – Entlastung ⬇️", type: "strength", label: "Kraft – leicht", description: "Gleiche Übungen, aber nur 2 Runden. Fokus Bewegungsqualität.", duration: 30, zone: "–", rpe_target: "5" },
+  { date: "2026-05-09", phase: "Phase 5 – Entlastung ⬇️", type: "rest", label: "Ruhe", description: "Erholung.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-05-10", phase: "Phase 5 – Entlastung ⬇️", type: "ride", label: "Z2 Outdoor", description: "2,5h Z2 Outdoor.", duration: 150, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-05-11", phase: "Phase 5 – Entlastung ⬇️", type: "rest", label: "Ruhe", description: "Ruhetag.", duration: 0, zone: "–", rpe_target: "–" },
+
+  // Phase 6 – Aufbaublock II
+  { date: "2026-05-12", phase: "Phase 6 – Aufbau II 🔴", type: "rest", label: "Ruhetag", description: "Frisch in den letzten Block.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-05-13", phase: "Phase 6 – Aufbau II 🔴", type: "ride", label: "🏅 Vereinstraining – Vollgas", description: "60km Z2 mit gemischten Peaks. Peak-Woche: bei den Peaks wirklich alles geben, Z5-Reize voll auskosten. Das ersetzt die geplanten VO2max-Intervalle.", duration: 120, zone: "Z2 + Z5 Peaks", rpe_target: "7–10" },
+  { date: "2026-05-14", phase: "Phase 6 – Aufbau II 🔴", type: "ride", label: "Z2 Outdoor", description: "3h Z2.", duration: 180, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-05-15", phase: "Phase 6 – Aufbau II 🔴", type: "strength", label: "Kraft – Stabilität", description: "Fokus Rumpf & Hüfte. Kein Muskelkater vor dem Lager erzeugen! Moderate Intensität.", duration: 35, zone: "–", rpe_target: "5–6" },
+  { date: "2026-05-16", phase: "Phase 6 – Aufbau II 🔴", type: "rest", label: "Ruhe", description: "Erholung.", duration: 0, zone: "–", rpe_target: "–" },
+  { date: "2026-05-17", phase: "Phase 6 – Aufbau II 🔴", type: "ride", label: "4,5h mit Tempo-Passagen", description: "4,5h Outdoor. Nach 1h: 3×15 Min Z3/Z4 wechselnd. Rest Z2.", duration: 270, zone: "Z2–Z4", rpe_target: "7" },
+  { date: "2026-05-18", phase: "Phase 6 – Aufbau II 🔴", type: "ride", label: "2h locker", description: "2h locker Z2. Beine für Lager schonen.", duration: 120, zone: "Z2", rpe_target: "4–5" },
+  { date: "2026-05-19", phase: "Phase 6 – Aufbau II 🔴", type: "rest", label: "Ruhe vor Trainingslager", description: "Letzte Ruhe vor dem Lager. Packen, schlafen, freuen!", duration: 0, zone: "–", rpe_target: "–" },
+
+  // Trainingslager
+  { date: "2026-05-20", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 1 – Ankommen & Z2 (kein Vereinstraining)", description: "4–5h Z2. Vereinstraining entfällt – du bist im Trainingslager! Ankommen, Rhythmus finden, nicht zu früh drücken.", duration: 270, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-05-21", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 2 – Z2 Volumen", description: "5h Z2. Stabiles Tempo, viel trinken & essen.", duration: 300, zone: "Z2", rpe_target: "5–6" },
+  { date: "2026-05-22", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 3 – Z2 + Z4-Blöcke", description: "5h: 2×20 Min Z4 eingebaut. Rest Z2.", duration: 300, zone: "Z2–Z4", rpe_target: "6–7" },
+  { date: "2026-05-23", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 4 – Z2 Erholung", description: "4h reine Z2-Ausfahrt. Aktive Erholung im Lager.", duration: 240, zone: "Z2", rpe_target: "5" },
+  { date: "2026-05-24", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 5 – Z2 + Z4-Blöcke", description: "5–6h: 3×15 Min Z4. Rest Z2.", duration: 330, zone: "Z2–Z4", rpe_target: "6–7" },
+  { date: "2026-05-25", phase: "🏔️ Trainingslager", type: "ride", label: "Lager Tag 6 – locker", description: "3–4h locker Z1/Z2. Beine schonen.", duration: 210, zone: "Z1–Z2", rpe_target: "4–5" },
+  { date: "2026-05-26", phase: "🏔️ Trainingslager", type: "test", label: "Lager Tag 7 – Abschluss + optionaler FTP-Test", description: "2h lockere Ausfahrt. Falls Energie vorhanden: Ramp-Test am Ende für FTP-Vergleich.", duration: 120, zone: "Z2/Max", rpe_target: "5 / 10 bei Test" },
+];
+
+const TYPE_META = {
+  ride:     { icon: "🚴", color: "#4ade80", bg: "#052e16" },
+  intervals:{ icon: "⚡", color: "#facc15", bg: "#1c1400" },
+  test:     { icon: "🔬", color: "#f97316", bg: "#1c0a00" },
+  run:      { icon: "🏃", color: "#38bdf8", bg: "#001c26" },
+  strength: { icon: "💪", color: "#c084fc", bg: "#160026" },
+  hiit:     { icon: "🔥", color: "#fb7185", bg: "#1f0010" },
+  mobility: { icon: "🧘", color: "#86efac", bg: "#012010" },
+  rest:     { icon: "😴", color: "#94a3b8", bg: "#0f172a" },
+};
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function getTodayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadStorage(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch { return fallback; }
+}
+
+function saveStorage(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
+
+const ZONES = ["Z1","Z2","Z3","Z4","Z5","Max","–"];
+const RPE_LABELS = ["1 – sehr locker","2","3","4","5 – moderat","6","7","8 – hart","9","10 – Maximum"];
+
+export default function TrainingsApp() {
+  const [today] = useState(getTodayStr());
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [logs, setLogs] = useState(() => loadStorage("training_logs_v1", {}));
+  const [overrides, setOverrides] = useState(() => loadStorage("training_overrides_v1", {}));
+  const [view, setView] = useState("today"); // today | log | plan | history
+  const [logForm, setLogForm] = useState({ done: true, duration: "", km: "", hm: "", hr: "", rpe: "", feeling: "3", notes: "", actualType: null, actualLabel: "", actualDuration: "", actualKm: "", actualHm: "", actualHr: "", actualRpe: "" });
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const [logSaved, setLogSaved] = useState(false);
+  const [extraWorkouts, setExtraWorkouts] = useState([]);
+
+  const emptyExtra = () => ({ type: "ride", label: "", duration: "", km: "", hm: "", hr: "", rpe: "", notes: "" });
+  const addExtra = () => setExtraWorkouts(e => [...e, emptyExtra()]);
+  const removeExtra = (i) => setExtraWorkouts(e => e.filter((_,idx) => idx !== i));
+  const updateExtra = (i, field, val) => setExtraWorkouts(e => e.map((x, idx) => idx === i ? { ...x, [field]: val } : x));
+
+  const getWorkout = (dateStr) => overrides[dateStr] || PLAN.find(p => p.date === dateStr) || null;
+  const todayWorkout = getWorkout(selectedDate);
+  const meta = todayWorkout ? (TYPE_META[todayWorkout.type] || TYPE_META.rest) : TYPE_META.rest;
+
+  const tomorrowStr = (() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  useEffect(() => {
+    if (logs[selectedDate]) {
+      const l = logs[selectedDate];
+      setLogForm({ done: l.done ?? true, duration: l.duration ?? "", km: l.km ?? "", hm: l.hm ?? "", hr: l.hr ?? "", rpe: l.rpe ?? "", feeling: l.feeling ?? "3", notes: l.notes ?? "", actualType: l.actualType ?? null, actualLabel: l.actualLabel ?? "", actualDuration: l.actualDuration ?? "", actualKm: l.actualKm ?? "", actualHm: l.actualHm ?? "", actualHr: l.actualHr ?? "", actualRpe: l.actualRpe ?? "" });
+      setExtraWorkouts(l.extraWorkouts ?? []);
+    } else {
+      setLogForm({ done: true, duration: todayWorkout?.duration?.toString() ?? "", km: "", hm: "", hr: "", rpe: "", feeling: "3", notes: "", actualType: null, actualLabel: "", actualDuration: "", actualKm: "", actualHm: "", actualHr: "", actualRpe: "" });
+      setExtraWorkouts([]);
+    }
+    setLogSaved(false);
+    setAiAnalysis(null);
+    setAiError(null);
+  }, [selectedDate]);
+
+  const saveLog = (autoAnalyze = false) => {
+    const updated = { ...logs, [selectedDate]: { ...logForm, extraWorkouts, workout: todayWorkout } };
+    setLogs(updated);
+    saveStorage("training_logs_v1", updated);
+    setLogSaved(true);
+    if (autoAnalyze) setTimeout(() => analyzeFullPlan(updated), 100);
+  };
+
+  const analyzeFullPlan = async (currentLogs = null) => {
+    setAiLoading(true);
+    setAiError(null);
+    setAiAnalysis(null);
+    const logsToUse = currentLogs || logs;
+    const todayLog = { ...logForm, extraWorkouts, workout: todayWorkout };
+    const futurePlan = PLAN.filter(p => p.date > selectedDate).map(p => {
+      const ov = overrides[p.date];
+      return { date: p.date, label: (ov||p).label, type: (ov||p).type, description: (ov||p).description, duration: (ov||p).duration, zone: (ov||p).zone, phase: p.phase };
+    });
+    const allLogs = Object.entries(logsToUse).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14).map(([d,l])=>({
+      date:d, type:l.actualType||l.workout?.type, label:l.actualLabel||l.workout?.label, done:l.done,
+      duration:l.duration, km:l.km, hm:l.hm, hr:l.hr, rpe:l.rpe, feeling:l.feeling, extras:l.extraWorkouts?.length||0
+    }));
+    const prompt = `Du bist ein Sportmediziner und Leistungsdiagnostiker mit Expertise in professioneller Radsport-Trainingsplanung. Analysiere den Trainingsstatus und optimiere den verbleibenden Plan.
+
+AKTUELLES TRAINING (${selectedDate}):
+- Einheit: ${todayWorkout?.label} (${todayWorkout?.type}), geplant ${todayWorkout?.duration}min Zone ${todayWorkout?.zone}
+- Tatsächlich: ${todayLog.duration}min, ${todayLog.km||"?"}km, ${todayLog.hm||"?"}hm, HF ${todayLog.hr||"?"}, RPE ${todayLog.rpe||"?"}/10, Gefühl ${todayLog.feeling}/5, ${todayLog.done?"abgeschlossen":"abgebrochen"}
+${todayLog.actualType?`- Abweichung: ${todayLog.actualType} – ${todayLog.actualLabel}, ${todayLog.actualDuration}min, ${todayLog.actualKm}km, ${todayLog.actualHm}hm, RPE ${todayLog.actualRpe}`:""}
+${extraWorkouts.length>0?`- Zusatz: ${extraWorkouts.map(e=>`${e.type} ${e.km||"?"}km ${e.hm||"?"}hm ${e.duration||"?"}min RPE${e.rpe||"?"}`).join(", ")}`:""}
+${todayLog.notes?`- Notiz: ${todayLog.notes}`:""}
+
+TRAININGSHISTORIE (letzte 14 Einheiten):
+${allLogs.map(l=>`${l.date}: ${l.label||l.type} | ${l.duration||"?"}min ${l.km||"?"}km ${l.hm||"?"}hm HF${l.hr||"?"} RPE${l.rpe||"?"}/10 Gefühl${l.feeling||"?"}/5 ${l.done?"✓":"✗"}${l.extras>0?" +Zusatz":""}`).join("\n")}
+
+VERBLEIBENDER PLAN (${futurePlan.length} Einheiten):
+${futurePlan.map(p=>`${p.date} [${p.phase}]: ${p.label} | ${p.type} | ${p.duration}min | ${p.zone}`).join("\n")}
+
+SPORTWISSENSCHAFTLICHE PRINZIPIEN (zwingend anwenden):
+1. CTL/ATL/TSB: Schätze akute Last (ATL ~7 Tage) und chronische Last (CTL ~42 Tage) aus RPE x Dauer. TSB=CTL-ATL. TSB < -20 = Überlastung, > +20 = Detrained.
+2. 80/20-Polarisierung: Exakt 80% Z1/Z2, max 20% Z3+. Prüfe das Verhältnis im Restplan.
+3. Progressive Overload: Max. 5-10% Volumensteigerung pro Woche. Nach 3 Belastungswochen Entlastungswoche (-30-40%).
+4. Vereinstraining Mi ist fix (60km Z2 + Peaks) - nicht ändern, als Intensitätsreiz werten.
+5. Erholungsindikatoren: RPE>8 bei Z2 = Überlastung. Gefühl ≤2 mehrfach = Anpassung. HF>10bpm über Norm = Erholungsdefizit.
+6. Tapering: Woche vor Trainingslager (ab 13.05.) Volumen -40%, Intensität beibehalten.
+7. Höhenmeter: <200hm=leicht, 200-500hm=moderat, 500-800hm=schwer, >800hm=sehr schwer.
+
+Passe NUR Einheiten an die wirklich geändert werden müssen. Vereinstraining (Mi) NIE ändern.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON ohne jeglichen Text davor oder danach:
+{"summary":"2-3 Sätze Gesamtanalyse auf Deutsch","fitness_trend":"steigend|stabil|abnehmend","recovery_status":"erholt|moderat|müde|überbelastet","load_balance":"optimal|zu_hoch|zu_niedrig","adjustments":[{"date":"YYYY-MM-DD","label":"Titel","type":"ride|intervals|strength|run|rest|mobility|hiit|test","description":"Details auf Deutsch","duration":90,"zone":"Z1-Z5 oder –","rpe_target":"5-6","adjustment_reason":"Begründung 1 Satz"}]}`;
+    try {
+      const res = await window.anthropicFetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 4000, messages: [{ role: "user", content: prompt }] })
+      });
+      const rawText = await res.text();
+      if (!res.ok) { let e = `HTTP ${res.status}`; try { e = JSON.parse(rawText)?.error?.message||e; } catch{} throw new Error(e); }
+      const data = JSON.parse(rawText);
+      const text = data.content?.map(b=>b.text||"").join("")||"";
+      const start = text.indexOf("{"); const end = text.lastIndexOf("}");
+      if (start===-1||end===-1) throw new Error("Kein JSON in Antwort");
+      const parsed = JSON.parse(text.slice(start, end+1));
+      if (!parsed.adjustments) throw new Error("Unvollständige Antwort");
+      setAiAnalysis(parsed);
+    } catch(e) { setAiError(`Fehler: ${e.message}`); }
+    setAiLoading(false);
+  };
+
+  const applyAiAnalysis = () => {
+    if (!aiAnalysis?.adjustments) return;
+    const newOverrides = { ...overrides };
+    aiAnalysis.adjustments.forEach(adj => {
+      const { adjustment_reason, ...workout } = adj;
+      newOverrides[adj.date] = { ...workout, ai_adjusted: true, adjustment_reason };
+    });
+    setOverrides(newOverrides);
+    saveStorage("training_overrides_v1", newOverrides);
+    setAiAnalysis(null);
+    alert(`✅ ${aiAnalysis.adjustments.length} Einheit(en) angepasst.`);
+  };
+
+    const feelingEmoji = ["😴","😓","😐","🙂","😄"][parseInt(logForm.feeling) - 1] || "😐";
+
+  // Nav dates: show a sliding window of plan dates
+  const planDates = PLAN.map(p => p.date).filter((d, i, a) => a.indexOf(d) === i);
+  const todayIdx = planDates.indexOf(today);
+  const visibleDates = planDates.slice(Math.max(0, todayIdx - 2), todayIdx + 8);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#030712", color: "#e2e8f0", fontFamily: "'DM Mono', 'Courier New', monospace", padding: "0 0 80px" }}>
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", borderBottom: "1px solid #1e293b", padding: "20px 20px 16px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 3, color: "#475569", marginBottom: 4, textTransform: "uppercase" }}>Trainingscoach</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#f8fafc", letterSpacing: -0.5 }}>Mein Radsport-Plan</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "#64748b" }}>FTP-Aufbau · April – Mai 2026</div>
+          <button onClick={() => window.openSettings()} style={{ background: "none", border: "1px solid #334155", borderRadius: 20, padding: "4px 12px", color: "#64748b", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>⚙️ API-Key</button>
+        </div>
+      </div>
+
+      {/* Date scroller */}
+      <div style={{ overflowX: "auto", display: "flex", gap: 8, padding: "14px 16px", background: "#0f172a", borderBottom: "1px solid #1e293b" }}>
+        {visibleDates.map(d => {
+          const w = getWorkout(d);
+          const m = w ? (TYPE_META[w.type] || TYPE_META.rest) : TYPE_META.rest;
+          const isToday = d === today;
+          const isSel = d === selectedDate;
+          const hasLog = !!logs[d];
+          const dd = new Date(d + "T12:00:00");
+          return (
+            <button key={d} onClick={() => { setSelectedDate(d); setView("today"); }}
+              style={{ flexShrink: 0, width: 52, padding: "8px 4px", borderRadius: 10, border: isSel ? `2px solid ${m.color}` : "2px solid transparent", background: isSel ? m.bg : "#1e293b", cursor: "pointer", transition: "all 0.15s", position: "relative" }}>
+              <div style={{ fontSize: 10, color: isToday ? m.color : "#64748b", fontWeight: isToday ? 700 : 400, textTransform: "uppercase", letterSpacing: 1 }}>
+                {dd.toLocaleDateString("de-DE", { weekday: "short" })}
+              </div>
+              <div style={{ fontSize: 16, margin: "4px 0 2px" }}>{m.icon}</div>
+              <div style={{ fontSize: 11, color: isSel ? m.color : "#94a3b8", fontWeight: 600 }}>
+                {dd.getDate()}.{dd.getMonth() + 1}
+              </div>
+              {hasLog && <div style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: "#4ade80" }} />}
+              {w?.ai_adjusted && <div style={{ position: "absolute", top: 4, left: 4, fontSize: 8 }}>🤖</div>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Bar */}
+      <div style={{ display: "flex", background: "#0f172a", borderBottom: "1px solid #1e293b" }}>
+        {[["today","📋","Einheit"], ["log","✍️","Eintragen"], ["plan","🗓","Alle Tage"]].map(([v, ic, lb]) => (
+          <button key={v} onClick={() => setView(v)}
+            style={{ flex: 1, padding: "12px 4px", background: "none", border: "none", color: view === v ? "#f8fafc" : "#475569", fontSize: 12, fontFamily: "inherit", cursor: "pointer", borderBottom: view === v ? "2px solid #4ade80" : "2px solid transparent", transition: "all 0.15s" }}>
+            <span style={{ fontSize: 16 }}>{ic}</span><br />{lb}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: "20px 16px", maxWidth: 480, margin: "0 auto" }}>
+
+        {/* TODAY VIEW */}
+        {view === "today" && todayWorkout && (
+          <div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>{todayWorkout.phase}</div>
+            <div style={{ background: meta.bg, border: `1px solid ${meta.color}22`, borderRadius: 16, padding: 20, marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <span style={{ fontSize: 36 }}>{meta.icon}</span>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: meta.color }}>{todayWorkout.label}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{formatDate(selectedDate)}</div>
+                </div>
+                {todayWorkout.ai_adjusted && <span style={{ marginLeft: "auto", fontSize: 10, background: "#1e293b", color: "#818cf8", padding: "4px 8px", borderRadius: 20 }}>🤖 KI-angepasst</span>}
+              </div>
+              <p style={{ color: "#cbd5e1", fontSize: 14, lineHeight: 1.7, margin: "0 0 16px" }}>{todayWorkout.description}</p>
+              {todayWorkout.ai_adjusted && todayWorkout.adjustment_reason && (
+                <div style={{ background: "#0f172a", border: "1px solid #818cf855", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 12, color: "#818cf8" }}>
+                  <b>KI-Begründung:</b> {todayWorkout.adjustment_reason}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {todayWorkout.duration > 0 && (
+                  <span style={{ background: "#1e293b", color: "#94a3b8", padding: "4px 12px", borderRadius: 20, fontSize: 12 }}>⏱ {todayWorkout.duration} Min</span>
+                )}
+                {todayWorkout.zone !== "–" && (
+                  <span style={{ background: "#1e293b", color: meta.color, padding: "4px 12px", borderRadius: 20, fontSize: 12 }}>📊 {todayWorkout.zone}</span>
+                )}
+                <span style={{ background: "#1e293b", color: "#94a3b8", padding: "4px 12px", borderRadius: 20, fontSize: 12 }}>🎯 RPE {todayWorkout.rpe_target}</span>
+              </div>
+            </div>
+
+            {logs[selectedDate] && (
+              <div style={{ background: "#052e16", border: "1px solid #4ade8033", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#4ade80", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>✅ Eingetragen</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, color: "#86efac" }}>
+                  {logs[selectedDate].duration && <span>⏱ {logs[selectedDate].duration} Min</span>}
+                  {logs[selectedDate].km && <span>📍 {logs[selectedDate].km}km</span>}
+                  {logs[selectedDate].hm && <span>⛰️ {logs[selectedDate].hm}hm</span>}
+                  {logs[selectedDate].hr && <span>❤️ {logs[selectedDate].hr} bpm</span>}
+                  {logs[selectedDate].rpe && <span>💪 RPE {logs[selectedDate].rpe}</span>}
+                  {logs[selectedDate].feeling && <span>{["😴","😓","😐","🙂","😄"][parseInt(logs[selectedDate].feeling)-1]} Gefühl {logs[selectedDate].feeling}/5</span>}
+                </div>
+                {logs[selectedDate].notes && <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>{logs[selectedDate].notes}</div>}
+                {logs[selectedDate].actualType && (
+                  <div style={{ marginTop: 8, fontSize: 12, background: "#1c0a00", border: "1px solid #f9741633", borderRadius: 8, padding: "6px 10px", color: "#f97316" }}>
+                    🔄 {TYPE_META[logs[selectedDate].actualType]?.icon} {logs[selectedDate].actualLabel || logs[selectedDate].actualType}
+                    {(logs[selectedDate].actualKm || logs[selectedDate].actualHm || logs[selectedDate].actualDuration) && (
+                      <span style={{marginLeft:6, color:"#fb923c"}}>
+                        {logs[selectedDate].actualDuration ? `${logs[selectedDate].actualDuration}min` : ""}
+                        {logs[selectedDate].actualKm ? ` · ${logs[selectedDate].actualKm}km` : ""}
+                        {logs[selectedDate].actualHm ? ` · ${logs[selectedDate].actualHm}hm` : ""}
+                        {logs[selectedDate].actualHr ? ` · ❤️${logs[selectedDate].actualHr}` : ""}
+                        {logs[selectedDate].actualRpe ? ` · RPE ${logs[selectedDate].actualRpe}` : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {logs[selectedDate].extraWorkouts?.length > 0 && logs[selectedDate].extraWorkouts.map((e, i) => (
+                  <div key={i} style={{ marginTop: 6, fontSize: 12, background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "6px 10px", color: "#94a3b8" }}>
+                    ➕ {TYPE_META[e.type]?.icon || "🏃"} {e.label || e.type}{e.km ? ` · ${e.km}km` : ""}{e.hm ? ` · ${e.hm}hm` : ""}{e.duration ? ` · ${e.duration}min` : ""}{e.rpe ? ` · RPE ${e.rpe}` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* AI Full Plan Analysis */}
+            {logs[selectedDate] && (
+              <div style={{ background: "#0f172a", border: "1px solid #818cf833", borderRadius: 14, padding: 16 }}>
+                <div style={{ fontSize: 13, color: "#818cf8", marginBottom: 4, fontWeight: 600 }}>🤖 KI-Plananalyse</div>
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>Analysiert deinen gesamten Restplan auf Basis sportmedizinischer Prinzipien (CTL/ATL · 80/20 · Supercompensation)</div>
+                {!aiAnalysis && !aiLoading && (
+                  <button onClick={() => analyzeFullPlan()} style={{ width: "100%", padding: 12, background: "linear-gradient(135deg, #4f46e5, #7c3aed)", color: "white", border: "none", borderRadius: 10, fontSize: 13, fontFamily: "inherit", fontWeight: 700, cursor: "pointer" }}>
+                    Gesamtplan analysieren & optimieren ✨
+                  </button>
+                )}
+                {aiLoading && (
+                  <div style={{ textAlign: "center", padding: 24, color: "#818cf8", fontSize: 13 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>⚙️</div>
+                    <div style={{ fontWeight: 600 }}>Analysiere Trainingsdaten...</div>
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>CTL/ATL · 80/20 · Supercompensation</div>
+                  </div>
+                )}
+                {aiError && <div style={{ color: "#fb7185", fontSize: 12, padding: 8 }}>{aiError}</div>}
+                {aiAnalysis && (
+                  <div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {[["Trend", aiAnalysis.fitness_trend, aiAnalysis.fitness_trend==="steigend"?"#4ade80":aiAnalysis.fitness_trend==="abnehmend"?"#fb7185":"#facc15"],
+                        ["Erholung", aiAnalysis.recovery_status, aiAnalysis.recovery_status==="erholt"?"#4ade80":aiAnalysis.recovery_status==="überbelastet"?"#fb7185":"#facc15"],
+                        ["Belastung", aiAnalysis.load_balance, aiAnalysis.load_balance==="optimal"?"#4ade80":aiAnalysis.load_balance==="zu_hoch"?"#fb7185":"#facc15"]
+                      ].map(([k,v,c]) => (
+                        <span key={k} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: c+"22", color: c, border: `1px solid ${c}44` }}>{k}: {v?.replace("_"," ")}</span>
+                      ))}
+                    </div>
+                    <div style={{ background: "#1e1b4b", border: "1px solid #818cf833", borderRadius: 10, padding: 12, marginBottom: 10, fontSize: 12, color: "#c7d2fe", lineHeight: 1.7 }}>
+                      {aiAnalysis.summary}
+                    </div>
+                    {aiAnalysis.adjustments.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#4ade80", textAlign: "center", padding: 8 }}>✅ Plan ist optimal – keine Anpassungen nötig</div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>{aiAnalysis.adjustments.length} Anpassung(en) vorgeschlagen:</div>
+                        <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                          {aiAnalysis.adjustments.map((adj, i) => {
+                            const m = TYPE_META[adj.type]||TYPE_META.rest;
+                            const dd = new Date(adj.date+"T12:00:00");
+                            return (
+                              <div key={i} style={{ background: m.bg, border: `1px solid ${m.color}33`, borderRadius: 10, padding: "10px 12px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.icon} {adj.label}</span>
+                                  <span style={{ fontSize: 10, color: "#475569" }}>{dd.toLocaleDateString("de-DE",{day:"numeric",month:"short"})}</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3, lineHeight: 1.5 }}>{adj.description?.slice(0,100)}{adj.description?.length>100?"…":""}</div>
+                                <div style={{ fontSize: 10, color: "#818cf8" }}>💡 {adj.adjustment_reason}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={applyAiAnalysis} style={{ flex: 1, padding: 10, background: "#4f46e5", color: "white", border: "none", borderRadius: 8, fontSize: 13, fontFamily: "inherit", fontWeight: 700, cursor: "pointer" }}>✅ Alle übernehmen</button>
+                          <button onClick={() => setAiAnalysis(null)} style={{ flex: 1, padding: 10, background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 8, fontSize: 13, fontFamily: "inherit", cursor: "pointer" }}>✗ Verwerfen</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === "today" && !todayWorkout && (
+          <div style={{ textAlign: "center", padding: 40, color: "#475569" }}>
+            <div style={{ fontSize: 40 }}>🎉</div>
+            <div style={{ marginTop: 12 }}>Kein Training geplant für diesen Tag.</div>
+          </div>
+        )}
+
+        {/* LOG VIEW */}
+        {view === "log" && (
+          <div>
+            <div style={{ fontSize: 13, color: "#4ade80", marginBottom: 16 }}>Einheit eintragen – {formatDate(selectedDate)}</div>
+            {todayWorkout && (
+              <div style={{ background: "#1e293b", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: "#94a3b8" }}>
+                Geplant: <b style={{ color: "#f8fafc" }}>{meta.icon} {todayWorkout.label}</b>
+              </div>
+            )}
+
+            <label style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, cursor: "pointer" }}>
+              <div onClick={() => setLogForm(f => ({ ...f, done: !f.done }))}
+                style={{ width: 24, height: 24, borderRadius: 6, border: `2px solid ${logForm.done ? "#4ade80" : "#334155"}`, background: logForm.done ? "#4ade80" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
+                {logForm.done && <span style={{ color: "#030712", fontWeight: 700, fontSize: 14 }}>✓</span>}
+              </div>
+              <span style={{ color: "#e2e8f0", fontSize: 14 }}>Einheit abgeschlossen</span>
+            </label>
+
+            {[
+              { key: "duration", label: "Dauer (Min)", placeholder: todayWorkout?.duration?.toString() ?? "90", type: "number" },
+              { key: "km", label: "Kilometer", placeholder: "z.B. 60", type: "number" },
+              { key: "hm", label: "Höhenmeter (gesamt)", placeholder: "z.B. 450", type: "number" },
+              { key: "hr", label: "Ø Herzfrequenz (bpm)", placeholder: "z.B. 145", type: "number" },
+              { key: "rpe", label: "RPE (1–10)", placeholder: "z.B. 7", type: "number" },
+            ].map(({ key, label, placeholder, type }) => (
+              <div key={key} style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 6 }}>{label}</label>
+                <input type={type} value={logForm[key]} onChange={e => setLogForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  style={{ width: "100%", padding: "11px 14px", background: "#1e293b", border: "1px solid #334155", borderRadius: 10, color: "#f8fafc", fontSize: 15, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+              </div>
+            ))}
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 8 }}>Wie hast du dich gefühlt? {feelingEmoji}</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["1","2","3","4","5"].map(v => (
+                  <button key={v} onClick={() => setLogForm(f => ({ ...f, feeling: v }))}
+                    style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${logForm.feeling === v ? "#4ade80" : "#334155"}`, background: logForm.feeling === v ? "#052e16" : "#1e293b", color: logForm.feeling === v ? "#4ade80" : "#64748b", fontSize: 16, cursor: "pointer", transition: "all 0.15s" }}>
+                    {["😴","😓","😐","🙂","😄"][parseInt(v)-1]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 6 }}>Notizen</label>
+              <textarea value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Wie lief es? Besonderheiten? Schmerzen?"
+                rows={3}
+                style={{ width: "100%", padding: "11px 14px", background: "#1e293b", border: "1px solid #334155", borderRadius: 10, color: "#f8fafc", fontSize: 14, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box" }} />
+            </div>
+
+            {/* Andere Einheit */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 8 }}>Andere Einheit gemacht?</label>
+              {!logForm.actualType ? (
+                <button onClick={() => setLogForm(f => ({ ...f, actualType: "ride" }))}
+                  style={{ width: "100%", padding: "10px", background: "#1e293b", border: "1px dashed #334155", borderRadius: 10, color: "#64748b", fontSize: 13, fontFamily: "inherit", cursor: "pointer" }}>
+                  + Abweichung eintragen
+                </button>
+              ) : (
+                <div style={{ background: "#1e293b", border: "1px solid #f97316aa", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 12, color: "#f97316", marginBottom: 10, fontWeight: 600 }}>🔄 Abweichung vom Plan</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {[["ride","🚴","Rad"],["run","🏃","Laufen"],["strength","💪","Kraft"],["intervals","⚡","Intervalle"],["hiit","🔥","HIIT"],["mobility","🧘","Mobility"],["rest","😴","Ruhe"]].map(([t,ic,lb]) => (
+                      <button key={t} onClick={() => setLogForm(f => ({ ...f, actualType: t }))}
+                        style={{ padding: "6px 12px", borderRadius: 20, border: `2px solid ${logForm.actualType === t ? (TYPE_META[t]?.color || "#f97316") : "#334155"}`, background: logForm.actualType === t ? (TYPE_META[t]?.bg || "#1c0a00") : "transparent", color: logForm.actualType === t ? (TYPE_META[t]?.color || "#f97316") : "#64748b", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
+                        {ic} {lb}
+                      </button>
+                    ))}
+                  </div>
+                  <input value={logForm.actualLabel} onChange={e => setLogForm(f => ({ ...f, actualLabel: e.target.value }))}
+                    placeholder="Beschreibung (z.B. Spontanausfahrt 40km)"
+                    style={{ width: "100%", padding: "8px 12px", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    {[["actualDuration","⏱ Dauer (Min)","90"],["actualKm","📍 Kilometer","40"],["actualHm","⛰️ Höhenmeter","300"],["actualHr","❤️ Ø HF (bpm)","145"],["actualRpe","💪 RPE (1–10)","7"]].map(([field, label, ph]) => (
+                      <div key={field}>
+                        <div style={{ fontSize: 10, color: "#475569", marginBottom: 3 }}>{label}</div>
+                        <input type="number" value={logForm[field]||""} onChange={e => setLogForm(f => ({ ...f, [field]: e.target.value }))} placeholder={ph}
+                          style={{ width: "100%", padding: "7px 10px", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setLogForm(f => ({ ...f, actualType: null, actualLabel: "", actualDuration: "", actualKm: "", actualHm: "", actualHr: "", actualRpe: "" }))}
+                    style={{ fontSize: 11, color: "#475569", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                    ✕ Abweichung entfernen
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Zusätzliche Einheiten */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, textTransform: "uppercase" }}>Zusätzliche Einheiten</label>
+                <button onClick={addExtra} style={{ fontSize: 12, color: "#4ade80", background: "none", border: "1px solid #4ade8044", borderRadius: 20, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}>+ Hinzufügen</button>
+              </div>
+              {extraWorkouts.length === 0 && (
+                <div style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "10px 0" }}>Noch keine zusätzlichen Einheiten</div>
+              )}
+              {extraWorkouts.map((ex, i) => (
+                <div key={i} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>➕ Einheit {i + 1}</span>
+                    <button onClick={() => removeExtra(i)} style={{ fontSize: 11, color: "#475569", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>✕ Entfernen</button>
+                  </div>
+                  {/* Type selector */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {[["ride","🚴","Rad"],["run","🏃","Laufen"],["strength","💪","Kraft"],["intervals","⚡","Intervalle"],["hiit","🔥","HIIT"],["mobility","🧘","Mobility"]].map(([t,ic,lb]) => (
+                      <button key={t} onClick={() => updateExtra(i, "type", t)}
+                        style={{ padding: "5px 10px", borderRadius: 20, border: `2px solid ${ex.type === t ? (TYPE_META[t]?.color||"#4ade80") : "#334155"}`, background: ex.type === t ? (TYPE_META[t]?.bg||"#052e16") : "transparent", color: ex.type === t ? (TYPE_META[t]?.color||"#4ade80") : "#64748b", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                        {ic} {lb}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Label */}
+                  <input value={ex.label} onChange={e => updateExtra(i, "label", e.target.value)} placeholder="Beschreibung (z.B. Abendlauf 8km)"
+                    style={{ width: "100%", padding: "8px 12px", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+                  {/* Metrics grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {[["duration","⏱ Dauer (Min)","90"],["km","📍 Kilometer","40"],["hm","⛰️ Höhenmeter","300"],["hr","❤️ Ø HF (bpm)","145"],["rpe","💪 RPE (1–10)","7"]].map(([field, label, ph]) => (
+                      <div key={field}>
+                        <div style={{ fontSize: 10, color: "#475569", marginBottom: 3 }}>{label}</div>
+                        <input type="number" value={ex[field]||""} onChange={e => updateExtra(i, field, e.target.value)} placeholder={ph}
+                          style={{ width: "100%", padding: "7px 10px", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                      </div>
+                    ))}
+                    <div>
+                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3 }}>📝 Notiz</div>
+                      <input value={ex.notes||""} onChange={e => updateExtra(i, "notes", e.target.value)} placeholder="Optional"
+                        style={{ width: "100%", padding: "7px 10px", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => saveLog(false)}
+              style={{ width: "100%", padding: 14, background: "linear-gradient(135deg, #16a34a, #15803d)", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontFamily: "inherit", fontWeight: 700, cursor: "pointer", letterSpacing: 0.5 }}>
+              {logSaved ? "✅ Gespeichert!" : "💾 Training speichern"}
+            </button>
+            {logSaved && (
+              <button onClick={() => { setView("today"); }}
+                style={{ width: "100%", marginTop: 10, padding: 12, background: "linear-gradient(135deg, #4f46e5, #7c3aed)", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontFamily: "inherit", fontWeight: 700, cursor: "pointer" }}>
+                🤖 Gesamtplan analysieren & optimieren →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* PLAN VIEW */}
+        {view === "plan" && (
+          <div>
+            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>Gesamtplan – alle Einheiten</div>
+            {PLAN.map((w, i) => {
+              const m = TYPE_META[w.type] || TYPE_META.rest;
+              const override = overrides[w.date];
+              const hasLog = !!logs[w.date];
+              const isToday = w.date === today;
+              const isPast = w.date < today;
+              return (
+                <button key={i} onClick={() => { setSelectedDate(w.date); setView("today"); }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: isToday ? m.bg : "#0f172a", border: `1px solid ${isToday ? m.color + "44" : "#1e293b"}`, borderRadius: 12, marginBottom: 8, cursor: "pointer", opacity: isPast ? 0.6 : 1, transition: "all 0.15s", textAlign: "left" }}>
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>{m.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: "#475569" }}>{formatDate(w.date)}</div>
+                    <div style={{ fontSize: 13, color: isToday ? m.color : "#e2e8f0", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {override ? "🤖 " : ""}{(override || w).label}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#475569" }}>{w.phase}</div>
+                  </div>
+                  <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                    {hasLog && <span style={{ fontSize: 10, color: "#4ade80" }}>✓</span>}
+                    {w.duration > 0 && <span style={{ fontSize: 11, color: "#475569" }}>{w.duration}′</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+    // ── Mount ──
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<TrainingsApp />);
+  </script>
+</body>
+</html>
