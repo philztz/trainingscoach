@@ -124,9 +124,34 @@ button{cursor:pointer}
 .ssave{width:100%;padding:13px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;margin-bottom:10px}
 .sclose{width:100%;padding:11px;background:#0f172a;color:#64748b;border:1px solid #334155;border-radius:10px;font-size:13px}
 .sst{font-size:12px;color:#4ade80;margin-top:8px;text-align:center;min-height:20px}
+
+#login-screen{display:none;position:fixed;inset:0;background:#030712;z-index:99999;align-items:center;justify-content:center;padding:24px}
+#login-screen.show{display:flex}
+.login-box{width:100%;max-width:360px}
+.login-logo{font-size:48px;text-align:center;margin-bottom:8px}
+.login-title{font-size:24px;font-weight:700;color:#f8fafc;text-align:center;margin-bottom:4px;font-family:'Courier New',monospace}
+.login-sub{font-size:13px;color:#475569;text-align:center;margin-bottom:32px;font-family:'Courier New',monospace}
+.login-input{width:100%;padding:14px 16px;background:#1e293b;border:1px solid #334155;border-radius:12px;color:#f8fafc;font-size:16px;outline:none;font-family:'Courier New',monospace;margin-bottom:12px;box-sizing:border-box}
+.login-input:focus{border-color:#4ade80}
+.login-btn{width:100%;padding:14px;background:linear-gradient(135deg,#16a34a,#15803d);color:white;border:none;border-radius:12px;font-size:16px;font-weight:700;font-family:'Courier New',monospace;cursor:pointer;letter-spacing:.5px}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-err{font-size:13px;color:#fb7185;text-align:center;margin-top:10px;min-height:20px;font-family:'Courier New',monospace}
 </style>
 </head>
 <body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">🚴</div>
+    <div class="login-title">Trainingscoach</div>
+    <div class="login-sub">Bitte Passwort eingeben</div>
+    <input id="pw-input" class="login-input" type="password" placeholder="Passwort..." 
+           onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button id="pw-btn" class="login-btn" onclick="doLogin()">Einloggen</button>
+    <div id="pw-err" class="login-err"></div>
+  </div>
+</div>
+
 <div id="so">
   <div class="sbox">
     <h2>&#128273; API-Key einrichten</h2>
@@ -141,6 +166,41 @@ button{cursor:pointer}
 </div>
 <div class="app" id="app"></div>
 <script>
+
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+function getSession(){try{const s=JSON.parse(localStorage.getItem("tc_session")||"null");if(s&&s.expires>Date.now())return s;}catch{}return null;}
+function clearSession(){localStorage.removeItem("tc_session");}
+
+async function doLogin(){
+  const pw=document.getElementById("pw-input").value.trim();
+  const btn=document.getElementById("pw-btn");
+  const err=document.getElementById("pw-err");
+  if(!pw){err.textContent="Bitte Passwort eingeben";return;}
+  btn.disabled=true;btn.textContent="Prüfe...";err.textContent="";
+  try{
+    const r=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||"Falsches Passwort");
+    localStorage.setItem("tc_session",JSON.stringify({token:data.token,expires:data.expires}));
+    document.getElementById("login-screen").classList.remove("show");
+    LLF();render();
+  }catch(e){
+    err.textContent=e.message;
+    btn.disabled=false;btn.textContent="Einloggen";
+    document.getElementById("pw-input").value="";
+    document.getElementById("pw-input").focus();
+  }
+}
+
+function checkAuth(){
+  if(!getSession()){
+    document.getElementById("login-screen").classList.add("show");
+    setTimeout(()=>document.getElementById("pw-input").focus(),100);
+    return false;
+  }
+  return true;
+}
 
 const PLAN=[
 {date:"2026-04-07",phase:"Phase 1",type:"ride",label:"Z2 Ausfahrt",description:"1,5h lockere Z2-Ausfahrt outdoor. Beine wecken, kein Druck.",duration:90,zone:"Z2",rpe_target:"5-6"},
