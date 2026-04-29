@@ -165,6 +165,36 @@ button{cursor:pointer}
 .no-data{text-align:center;padding:24px;color:#475569;font-size:13px}
 .trend-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .trend-badge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+
+.coach-intro{font-size:13px;color:#64748b;line-height:1.6;margin-bottom:16px}
+.coach-examples{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.coach-ex-btn{padding:6px 12px;background:#1e293b;border:1px solid #334155;border-radius:20px;color:#94a3b8;font-size:12px;font-family:inherit}
+.coach-ex-btn:active{background:#334155}
+.coach-textarea{width:100%;padding:14px;background:#1e293b;border:1px solid #334155;border-radius:12px;color:#f8fafc;font-size:15px;outline:none;resize:none;font-family:inherit;line-height:1.6;box-sizing:border-box}
+.coach-textarea:focus{border-color:#818cf8}
+.coach-send-btn{width:100%;padding:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;font-family:inherit;margin-top:10px;letter-spacing:.5px}
+.coach-loading{text-align:center;padding:32px;color:#818cf8}
+.coach-result{background:#0f172a;border:1px solid #818cf833;border-radius:14px;padding:16px;margin-top:16px}
+.coach-result-title{font-size:13px;color:#818cf8;font-weight:600;margin-bottom:8px}
+.coach-summary{background:#1e1b4b;border:1px solid #818cf833;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:#c7d2fe;line-height:1.7}
+.coach-changes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:320px;overflow-y:auto}
+.coach-change{border-radius:10px;padding:10px 12px}
+.coach-change-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.coach-change-title{font-size:12px;font-weight:700}
+.coach-change-date{font-size:10px;color:#475569}
+.coach-change-desc{font-size:11px;color:#94a3b8;line-height:1.5;margin-bottom:3px}
+.coach-change-reason{font-size:10px;color:#818cf8}
+.coach-no-changes{font-size:12px;color:#4ade80;text-align:center;padding:8px}
+.coach-actions{display:flex;gap:8px}
+.coach-apply{flex:1;padding:10px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;font-family:inherit}
+.coach-discard{flex:1;padding:10px;background:#1e293b;color:#94a3b8;border:none;border-radius:8px;font-size:13px;font-family:inherit}
+.coach-err{color:#fb7185;font-size:12px;padding:8px;margin-top:8px}
+.coach-history{margin-top:20px}
+.coach-hist-title{font-size:11px;color:#475569;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+.coach-hist-item{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px}
+.coach-hist-date{font-size:10px;color:#475569;margin-bottom:4px}
+.coach-hist-msg{font-size:12px;color:#94a3b8;font-style:italic;margin-bottom:4px}
+.coach-hist-count{font-size:11px;color:#818cf8}
 </style>
 </head>
 <body>
@@ -287,7 +317,7 @@ const TM={ride:{i:"🚴",c:"#4ade80",b:"#052e16"},intervals:{i:"⚡",c:"#facc15"
 const EM=["😴","😓","😐","🙂","😄"];
 const WTs=[["ride","🚴","Rad"],["run","🏃","Laufen"],["strength","💪","Kraft"],["intervals","⚡","Intervalle"],["hiit","🔥","HIIT"],["mobility","🧘","Mobility"],["rest","😴","Ruhe"]];
 const today=new Date().toISOString().slice(0,10);
-let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false,stravaLoading:false,stravaActivities:null,stravaMsg:null};
+let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false,stravaLoading:false,stravaActivities:null,stravaMsg:null,coachText:"",coachL:false,coachResult:null,coachErr:null};
 function NF(){return{done:true,dur:"",km:"",hm:"",hr:"",rpe:"",feel:"3",notes:"",aT:null,aL:"",aDur:"",aKm:"",aHm:"",aHr:"",aRpe:""}}
 function LS(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
 function SS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
@@ -390,6 +420,7 @@ function render(){
   if(S.view==="today")c.appendChild(rToday(w));
   else if(S.view==="log")c.appendChild(rLog(w));
   else if(S.view==="stats")c.appendChild(rStats());
+  else if(S.view==="coach")c.appendChild(rCoach());
   else c.appendChild(rPlan());
   app.appendChild(c);
 }
@@ -412,7 +443,7 @@ function rDS(){
 }
 function rTabs(){
   const t=el("div","tabs");
-  [["today","📋","Einheit"],["log","✍️","Eintragen"],["stats","📊","Stats"],["plan","🗓","Plan"]].forEach(([v,ic,lb])=>{
+  [["today","📋","Einheit"],["log","✍️","Eintragen"],["stats","📊","Stats"],["coach","💬","Coach"],["plan","🗓","Plan"]].forEach(([v,ic,lb])=>{
     const b=el("button","tab"+(S.view===v?" active":""));
     b.innerHTML=`<span class="tab-icon">${ic}</span>${lb}`;
     b.onclick=()=>{S.view=v;render();};t.appendChild(b);
@@ -558,6 +589,186 @@ function saveFTP(ftp,date){
   hist.sort((a,b)=>a.date.localeCompare(b.date));
   localStorage.setItem("tc_ftp_history",JSON.stringify(hist));
 }
+
+
+// ─── COACH VIEW ──────────────────────────────────────────────────────────────
+
+function getCoachHistory(){return JSON.parse(localStorage.getItem("tc_coach_hist")||"[]");}
+function saveCoachHistory(msg,count){
+  const hist=getCoachHistory();
+  hist.unshift({date:today,msg:msg.slice(0,120),count});
+  localStorage.setItem("tc_coach_hist",JSON.stringify(hist.slice(0,10)));
+}
+
+async function sendCoachRequest(){
+  const text=S.coachText.trim();
+  if(!text){S.coachErr="Bitte beschreibe die Änderung oder Einschränkung.";render();return;}
+  const k=getApiKey();if(!k){openSettings();return;}
+  S.coachL=true;S.coachResult=null;S.coachErr=null;render();
+
+  const futurePlan=PLAN.filter(p=>p.date>=today).map(p=>{
+    const ov=S.ov[p.date];
+    return `${p.date} [${p.phase}]: ${(ov||p).label} | ${(ov||p).type} | ${(ov||p).duration}min | ${(ov||p).zone}`;
+  }).join("\n");
+
+  const recentLogs=Object.entries(S.logs).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,7)
+    .map(([d,l])=>`${d}: ${l.wl||l.wt} | ${l.dur||"?"}min ${l.km||"?"}km RPE${l.rpe||"?"} Gefühl${l.feel||"?"}/5`).join("\n");
+
+  const prompt=`Du bist ein erfahrener Radsport-Trainer. Der Athlet teilt dir eine Änderung oder Einschränkung mit und du passt den gesamten verbleibenden Trainingsplan professionell an.
+
+MITTEILUNG DES ATHLETEN:
+"${text}"
+
+AKTUELLES DATUM: ${today}
+
+VERBLEIBENDER PLAN:
+${futurePlan}
+
+LETZTE TRAININGS:
+${recentLogs}
+
+TRAININGSKONTEXT:
+- Vereinstraining jeden Mittwoch (60km Z2 + Peaks) – nur ändern wenn explizit nötig
+- Trainingslager 20.–26.05. – nur verschieben wenn absolut nötig
+- Prinzip: 80/20, Progressive Overload, Supercompensation
+- FTP-Aufbau als Hauptziel
+
+ANWEISUNG:
+Analysiere die Mitteilung des Athleten. Passe ALLE betroffenen Einheiten im Plan an. Berücksichtige:
+1. Zeitliche Einschränkungen (Reise, Besuche, Termine) → Einheiten kürzen, verschieben oder durch kürzere Alternativen ersetzen
+2. Gesundheitliche Einschränkungen (Krankheit, Verletzung, Müdigkeit) → Volumen & Intensität reduzieren, Erholung priorisieren
+3. Positive Änderungen (mehr Zeit, Motivation) → Volumen moderat steigern
+4. Passe nach der Einschränkungsphase den Wiederaufbau an (nicht zu schnell hochfahren!)
+
+Antworte NUR mit diesem JSON ohne Text davor/danach:
+{"summary":"2-3 Sätze: Was hast du verstanden und wie reagierst du darauf (deutsch, direkt zum Athleten sprechen)","adjustments":[{"date":"YYYY-MM-DD","label":"Titel","type":"ride|intervals|strength|run|rest|mobility|hiit|test","description":"Detaillierte Beschreibung","duration":90,"zone":"Z2","rpe_target":"5-6","adjustment_reason":"Kurze Begründung"}]}`;
+
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","x-api-key":k},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:4000,messages:[{role:"user",content:prompt}]})
+    });
+    const raw=await r.text();
+    if(!r.ok){let e=`HTTP ${r.status}`;try{e=JSON.parse(raw)?.error?.message||e;}catch{}throw new Error(e);}
+    const data=JSON.parse(raw);
+    const txt=data.content?.map(b=>b.text||"").join("")||"";
+    const s=txt.indexOf("{"),e=txt.lastIndexOf("}");
+    if(s===-1||e===-1)throw new Error("Kein JSON in Antwort");
+    const parsed=JSON.parse(txt.slice(s,e+1));
+    if(!parsed.adjustments)throw new Error("Unvollständige Antwort");
+    S.coachResult=parsed;
+  }catch(err){S.coachErr="Fehler: "+err.message;}
+  S.coachL=false;render();
+}
+
+function applyCoachResult(){
+  if(!S.coachResult?.adjustments)return;
+  S.coachResult.adjustments.forEach(adj=>{
+    const{adjustment_reason:r,...w}=adj;
+    S.ov[adj.date]={...w,ai_adjusted:true,adjustment_reason:r};
+  });
+  SS("to",S.ov);
+  saveCoachHistory(S.coachText,S.coachResult.adjustments.length);
+  alert("✅ "+S.coachResult.adjustments.length+" Einheit(en) im Plan angepasst.");
+  S.coachResult=null;S.coachText="";render();
+}
+
+function rCoach(){
+  const d=el("div");
+  d.appendChild(el("div","log-title","💬 Plan anpassen"));
+  d.appendChild(el("div","coach-intro","Beschreibe in eigenen Worten was ansteht – Reise, Besuch, Krankheit, Zeitdruck oder einfach weniger Motivation. Die KI passt deinen gesamten Plan professionell an."));
+
+  // Quick example buttons
+  const examples=el("div","coach-examples");
+  const exs=[
+    "Ich bin nächste Woche Mo–Mi auf Dienstreise und kann kein Rad fahren.",
+    "Ich habe Besuch am Wochenende vom 10.–12. Mai, kann da nicht trainieren.",
+    "Ich bin erkältet und brauche 3–4 Tage Pause.",
+    "Ich habe nächste Woche unerwartet viel Zeit und möchte mehr trainieren.",
+    "Knieprobleme – bitte Krafteinheiten für 2 Wochen reduzieren.",
+  ];
+  exs.forEach(ex=>{
+    const b=el("button","coach-ex-btn",ex.slice(0,40)+"...");
+    b.onclick=()=>{S.coachText=ex;render();setTimeout(()=>{const ta=document.getElementById("coach-ta");if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}},50);};
+    examples.appendChild(b);
+  });
+  d.appendChild(examples);
+
+  // Text area
+  const ta=el("textarea","coach-textarea");
+  ta.rows=5; ta.id="coach-ta";
+  ta.placeholder="z.B. Ich bin vom 5. bis 8. Mai auf einer Hochzeit und habe keine Zeit zum Trainieren. Danach möchte ich langsam wieder einsteigen...";
+  ta.value=S.coachText;
+  ta.oninput=e=>{S.coachText=e.target.value;};
+  d.appendChild(ta);
+
+  if(S.coachErr){d.appendChild(el("div","coach-err",S.coachErr));}
+
+  if(!S.coachL&&!S.coachResult){
+    const btn=el("button","coach-send-btn","Plan anpassen lassen ✨");
+    btn.onclick=sendCoachRequest;
+    d.appendChild(btn);
+  }
+
+  if(S.coachL){
+    const loading=el("div","coach-loading");
+    loading.innerHTML='<div style="font-size:32px;margin-bottom:12px">🤔</div><div style="font-weight:600">Analysiere deine Situation...</div><div style="font-size:11px;color:#475569;margin-top:6px">Passe Trainingsplan an</div>';
+    d.appendChild(loading);
+  }
+
+  if(S.coachResult){
+    const res=el("div","coach-result");
+    res.appendChild(el("div","coach-result-title","🤖 Plan-Anpassung"));
+    res.appendChild(el("div","coach-summary",S.coachResult.summary));
+
+    if(S.coachResult.adjustments.length===0){
+      res.appendChild(el("div","coach-no-changes","✅ Keine Planänderungen nötig"));
+    }else{
+      res.appendChild(el("div","ai-count",S.coachResult.adjustments.length+" Einheit(en) werden geändert:"));
+      const list=el("div","coach-changes");
+      S.coachResult.adjustments.forEach(adj=>{
+        const m=TM[adj.type]||TM.rest;
+        const c=el("div","coach-change");
+        c.style.cssText=`background:${m.b};border:1px solid ${m.c}33`;
+        c.innerHTML=`<div class="coach-change-hdr">
+          <span class="coach-change-title" style="color:${m.c}">${m.i} ${adj.label}</span>
+          <span class="coach-change-date">${adj.date} ${WD(adj.date)}</span></div>
+          <div class="coach-change-desc">${(adj.description||"").slice(0,120)}${(adj.description||"").length>120?"…":""}</div>
+          <div class="coach-change-reason">💡 ${adj.adjustment_reason}</div>`;
+        list.appendChild(c);
+      });
+      res.appendChild(list);
+    }
+
+    const actions=el("div","coach-actions");
+    const apply=el("button","coach-apply","✅ Übernehmen");
+    apply.onclick=applyCoachResult;
+    const disc=el("button","coach-discard","✗ Verwerfen");
+    disc.onclick=()=>{S.coachResult=null;render();};
+    actions.appendChild(apply);actions.appendChild(disc);
+    res.appendChild(actions);
+    d.appendChild(res);
+  }
+
+  // History
+  const hist=getCoachHistory();
+  if(hist.length>0){
+    const hSec=el("div","coach-history");
+    hSec.appendChild(el("div","coach-hist-title","Letzte Anpassungen"));
+    hist.forEach(h=>{
+      const item=el("div","coach-hist-item");
+      item.innerHTML=`<div class="coach-hist-date">${h.date}</div>
+        <div class="coach-hist-msg">"${h.msg}"</div>
+        <div class="coach-hist-count">${h.count} Einheit(en) angepasst</div>`;
+      hSec.appendChild(item);
+    });
+    d.appendChild(hSec);
+  }
+
+  return d;
+}
+
 
 function rStats(){
   const d=el("div");
