@@ -136,6 +136,35 @@ button{cursor:pointer}
 .login-btn{width:100%;padding:14px;background:linear-gradient(135deg,#16a34a,#15803d);color:white;border:none;border-radius:12px;font-size:16px;font-weight:700;font-family:'Courier New',monospace;cursor:pointer;letter-spacing:.5px}
 .login-btn:disabled{opacity:.5;cursor:not-allowed}
 .login-err{font-size:13px;color:#fb7185;text-align:center;margin-top:10px;min-height:20px;font-family:'Courier New',monospace}
+
+.stat-section{margin-bottom:24px}
+.stat-title{font-size:13px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.stat-card{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:16px;margin-bottom:12px}
+.ftp-current{text-align:center;padding:20px 0}
+.ftp-value{font-size:52px;font-weight:700;color:#4ade80;line-height:1}
+.ftp-unit{font-size:14px;color:#64748b;margin-top:4px}
+.ftp-date{font-size:11px;color:#475569;margin-top:6px}
+.ftp-input-row{display:flex;gap:8px;margin-top:12px}
+.ftp-input{flex:1;padding:10px 12px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#f8fafc;font-size:15px;outline:none}
+.ftp-save-btn{padding:10px 16px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;font-family:inherit}
+.zone-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1e293b11}
+.zone-row:last-child{border-bottom:none}
+.zone-name{font-size:12px;color:#94a3b8;width:100px;flex-shrink:0}
+.zone-bar-wrap{flex:1;height:8px;background:#1e293b;border-radius:4px;overflow:hidden}
+.zone-bar{height:100%;border-radius:4px;transition:width .5s}
+.zone-watts{font-size:11px;color:#475569;width:80px;text-align:right;flex-shrink:0}
+.chart-wrap{width:100%;overflow:hidden}
+.chart-svg{width:100%;display:block}
+.week-label{font-size:10px;fill:#475569;text-anchor:middle}
+.bar-km{fill:#4ade80}
+.bar-hm{fill:#818cf8}
+.line-ftp{fill:none;stroke:#f97316;stroke-width:2.5}
+.dot-ftp{fill:#f97316}
+.chart-legend{display:flex;gap:16px;margin-top:8px;font-size:11px;color:#64748b}
+.legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}
+.no-data{text-align:center;padding:24px;color:#475569;font-size:13px}
+.trend-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.trend-badge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
 </style>
 </head>
 <body>
@@ -360,6 +389,7 @@ function render(){
   const c=el("div","content");const w=GW(S.sel);
   if(S.view==="today")c.appendChild(rToday(w));
   else if(S.view==="log")c.appendChild(rLog(w));
+  else if(S.view==="stats")c.appendChild(rStats());
   else c.appendChild(rPlan());
   app.appendChild(c);
 }
@@ -382,7 +412,7 @@ function rDS(){
 }
 function rTabs(){
   const t=el("div","tabs");
-  [["today","📋","Einheit"],["log","✍️","Eintragen"],["plan","🗓","Plan"]].forEach(([v,ic,lb])=>{
+  [["today","📋","Einheit"],["log","✍️","Eintragen"],["stats","📊","Stats"],["plan","🗓","Plan"]].forEach(([v,ic,lb])=>{
     const b=el("button","tab"+(S.view===v?" active":""));
     b.innerHTML=`<span class="tab-icon">${ic}</span>${lb}`;
     b.onclick=()=>{S.view=v;render();};t.appendChild(b);
@@ -510,6 +540,313 @@ function rExtra(){
   });return s;
 }
 function remEx(i){S.ex.splice(i,1);render();}
+
+// ─── STATS VIEW ──────────────────────────────────────────────────────────────
+
+function getFTP(){
+  // Check localStorage for manually saved FTP
+  const saved = JSON.parse(localStorage.getItem("tc_ftp_history")||"[]");
+  if(saved.length>0) return saved[saved.length-1].ftp;
+  return null;
+}
+function getFTPHistory(){
+  return JSON.parse(localStorage.getItem("tc_ftp_history")||"[]");
+}
+function saveFTP(ftp,date){
+  const hist = getFTPHistory();
+  hist.push({ftp:parseInt(ftp),date:date||today});
+  hist.sort((a,b)=>a.date.localeCompare(b.date));
+  localStorage.setItem("tc_ftp_history",JSON.stringify(hist));
+}
+
+function rStats(){
+  const d=el("div");
+  d.appendChild(el("div","stat-title","📊 Trainingsstatistik"));
+
+  // ── FTP Section ──
+  const ftpCard=el("div","stat-card");
+  const ftp=getFTP();
+  const ftpHist=getFTPHistory();
+
+  const ftpSec=el("div","stat-section");
+  const ftpTitle=el("div","stat-title","⚡ FTP & Trainingszonen");
+  ftpSec.appendChild(ftpTitle);
+  ftpSec.appendChild(ftpCard);
+
+  // Current FTP display
+  const ftpDisplay=el("div","ftp-current");
+  ftpDisplay.innerHTML=ftp
+    ?`<div class="ftp-value">${ftp}</div><div class="ftp-unit">Watt (FTP)</div><div class="ftp-date">Stand: ${ftpHist[ftpHist.length-1]?.date||"–"}</div>`
+    :`<div style="font-size:13px;color:#64748b">Noch kein FTP gesetzt</div><div style="font-size:11px;color:#475569;margin-top:6px">Trage deinen FTP nach dem Ramp-Test ein</div>`;
+  ftpCard.appendChild(ftpDisplay);
+
+  // FTP input
+  const inputRow=el("div","ftp-input-row");
+  const ftpInp=el("input","ftp-input");
+  ftpInp.type="number"; ftpInp.placeholder="FTP in Watt (z.B. 220)"; ftpInp.id="ftp-inp";
+  const ftpBtn=el("button","ftp-save-btn","💾 Speichern");
+  ftpBtn.onclick=()=>{
+    const v=document.getElementById("ftp-inp").value;
+    if(!v||v<50||v>600){alert("Bitte gültigen FTP eingeben (50–600W)");return;}
+    saveFTP(v,today);
+    S.ftpSaved=true;
+    render();
+  };
+  inputRow.appendChild(ftpInp); inputRow.appendChild(ftpBtn);
+  ftpCard.appendChild(inputRow);
+
+  // FTP History chart
+  if(ftpHist.length>1){
+    const chartCard=el("div","stat-card");
+    chartCard.innerHTML='<div style="font-size:11px;color:#64748b;margin-bottom:10px;letter-spacing:1px;text-transform:uppercase">FTP-Verlauf</div>';
+    chartCard.appendChild(renderFTPChart(ftpHist));
+    ftpSec.appendChild(chartCard);
+  }
+
+  // Training Zones based on FTP
+  if(ftp){
+    const zonesCard=el("div","stat-card");
+    zonesCard.innerHTML='<div style="font-size:11px;color:#64748b;margin-bottom:12px;letter-spacing:1px;text-transform:uppercase">Coggan Trainingszonen</div>';
+    const zones=[
+      {name:"Z1 Regeneration",pct:[0,55],color:"#94a3b8"},
+      {name:"Z2 Grundlage",pct:[56,75],color:"#4ade80"},
+      {name:"Z3 Tempo",pct:[76,90],color:"#facc15"},
+      {name:"Z4 Schwelle",pct:[91,105],color:"#f97316"},
+      {name:"Z5 VO2max",pct:[106,120],color:"#fb7185"},
+      {name:"Z6 Anaerob",pct:[121,150],color:"#c084fc"},
+      {name:"Z7 Neuromusc.",pct:[151,200],color:"#f43f5e"},
+    ];
+    zones.forEach(z=>{
+      const lo=Math.round(ftp*z.pct[0]/100);
+      const hi=Math.round(ftp*z.pct[1]/100);
+      const barW=Math.min(100,z.pct[1]/2)+"%";
+      const row=el("div","zone-row");
+      row.innerHTML=`<div class="zone-name" style="color:${z.color}">${z.name}</div>
+        <div class="zone-bar-wrap"><div class="zone-bar" style="width:${barW};background:${z.color}"></div></div>
+        <div class="zone-watts">${lo}–${hi}W</div>`;
+      zonesCard.appendChild(row);
+    });
+    ftpSec.appendChild(zonesCard);
+  }
+
+  d.appendChild(ftpSec);
+
+  // ── Weekly Volume ──
+  const volSec=el("div","stat-section");
+  volSec.appendChild(el("div","stat-title","📅 Wochenvolumen (letzte 8 Wochen)"));
+  const volCard=el("div","stat-card");
+  volCard.appendChild(renderWeeklyChart());
+  const legend=el("div","chart-legend");
+  legend.innerHTML='<span><span class="legend-dot" style="background:#4ade80"></span>km</span><span><span class="legend-dot" style="background:#818cf8"></span>Höhenmeter ÷ 10</span>';
+  volCard.appendChild(legend);
+  volSec.appendChild(volCard);
+  d.appendChild(volSec);
+
+  // ── Zone Distribution ──
+  const zoneSec=el("div","stat-section");
+  zoneSec.appendChild(el("div","stat-title","🎯 Intensitätsverteilung (RPE-basiert)"));
+  const zoneDistCard=el("div","stat-card");
+  zoneDistCard.appendChild(renderZoneDist());
+  zoneSec.appendChild(zoneDistCard);
+  d.appendChild(zoneSec);
+
+  // ── Training Load ──
+  const loadSec=el("div","stat-section");
+  loadSec.appendChild(el("div","stat-title","📈 Trainingsbelastung"));
+  const loadCard=el("div","stat-card");
+  loadCard.appendChild(renderLoadSection());
+  loadSec.appendChild(loadCard);
+  d.appendChild(loadSec);
+
+  return d;
+}
+
+function renderFTPChart(hist){
+  const W=320,H=120,pad={t:10,r:10,b:30,l:40};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+  const ftps=hist.map(h=>h.ftp);
+  const minF=Math.min(...ftps)-20, maxF=Math.max(...ftps)+20;
+  const n=hist.length;
+
+  let pts=hist.map((h,i)=>{
+    const x=pad.l+(i/(n-1||1))*iW;
+    const y=pad.t+iH-(h.ftp-minF)/(maxF-minF)*iH;
+    return [x,y];
+  });
+
+  const pathD=pts.map((p,i)=>(i===0?"M":"L")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  let dots=pts.map((p,i)=>`<circle class="dot-ftp" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"/>
+    <text x="${p[0].toFixed(1)}" y="${(p[1]-8).toFixed(1)}" style="font-size:9px;fill:#f97316;text-anchor:middle">${hist[i].ftp}W</text>`).join("");
+
+  // X labels (dates)
+  let xlabels=hist.map((h,i)=>{
+    const x=pad.l+(i/(n-1||1))*iW;
+    const d=h.date.slice(5); // MM-DD
+    return `<text class="week-label" x="${x.toFixed(1)}" y="${H-4}">${d}</text>`;
+  }).join("");
+
+  // Y axis
+  const yMid=Math.round((minF+maxF)/2);
+  const yLabels=[minF,yMid,maxF].map(v=>{
+    const y=pad.t+iH-(v-minF)/(maxF-minF)*iH;
+    return `<text style="font-size:9px;fill:#475569;text-anchor:end" x="${pad.l-4}" y="${y.toFixed(1)+4}">${v}</text>`;
+  }).join("");
+
+  const svg=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    ${yLabels}${xlabels}
+    <path class="line-ftp" d="${pathD}"/>
+    ${dots}
+  </svg>`;
+  const wrap=el("div","chart-wrap"); wrap.innerHTML=svg; return wrap;
+}
+
+function getWeeks(n=8){
+  // Returns array of {label, start, end} for last n weeks
+  const weeks=[];
+  const now=new Date(today+"T12:00:00");
+  const dow=now.getDay()||7; // 1=Mon
+  const monday=new Date(now); monday.setDate(now.getDate()-(dow-1));
+  for(let i=n-1;i>=0;i--){
+    const wStart=new Date(monday); wStart.setDate(monday.getDate()-i*7);
+    const wEnd=new Date(wStart); wEnd.setDate(wStart.getDate()+6);
+    const fmt=d=>d.toISOString().slice(0,10);
+    weeks.push({label:`KW ${wStart.getDate()}.${wStart.getMonth()+1}`,start:fmt(wStart),end:fmt(wEnd)});
+  }
+  return weeks;
+}
+
+function renderWeeklyChart(){
+  const weeks=getWeeks(8);
+  const logs=S.logs;
+
+  const data=weeks.map(w=>{
+    let km=0,hm=0,min=0;
+    Object.entries(logs).forEach(([d,l])=>{
+      if(d>=w.start&&d<=w.end){
+        km+=parseFloat(l.km||0);
+        hm+=parseFloat(l.hm||0);
+        min+=parseFloat(l.dur||0);
+        (l.ex||[]).forEach(e=>{km+=parseFloat(e.km||0);hm+=parseFloat(e.hm||0);});
+      }
+    });
+    return {label:w.label,km:Math.round(km*10)/10,hm:Math.round(hm),min:Math.round(min)};
+  });
+
+  const hasData=data.some(d=>d.km>0||d.hm>0);
+  if(!hasData) return el("div","no-data","Noch keine Trainingsdaten vorhanden");
+
+  const W=320,H=130,pad={t:10,r:10,b:30,l:40};
+  const iW=W-pad.l-pad.r,iH=H-pad.t-pad.b;
+  const n=data.length;
+  const bW=(iW/n)*0.7, gap=(iW/n)*0.3;
+  const maxKm=Math.max(...data.map(d=>d.km),1);
+  const maxHm=Math.max(...data.map(d=>d.hm/10),1);
+  const maxVal=Math.max(maxKm,maxHm);
+
+  let bars="";
+  data.forEach((d,i)=>{
+    const cx=pad.l+(i+0.5)*(iW/n);
+    const x=cx-bW/2;
+    const kmH=d.km/maxVal*iH;
+    const hmH=(d.hm/10)/maxVal*iH;
+    bars+=`<rect x="${x.toFixed(1)}" y="${(pad.t+iH-kmH).toFixed(1)}" width="${(bW*0.48).toFixed(1)}" height="${kmH.toFixed(1)}" class="bar-km" rx="2"/>`;
+    bars+=`<rect x="${(x+bW*0.52).toFixed(1)}" y="${(pad.t+iH-hmH).toFixed(1)}" width="${(bW*0.48).toFixed(1)}" height="${hmH.toFixed(1)}" class="bar-hm" rx="2"/>`;
+    bars+=`<text class="week-label" x="${cx.toFixed(1)}" y="${H-4}">${d.label}</text>`;
+    if(d.km>0) bars+=`<text style="font-size:8px;fill:#4ade80;text-anchor:middle" x="${(x+bW*0.24).toFixed(1)}" y="${(pad.t+iH-kmH-3).toFixed(1)}">${d.km}</text>`;
+  });
+
+  const svg=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${bars}</svg>`;
+  const wrap=el("div","chart-wrap"); wrap.innerHTML=svg; return wrap;
+}
+
+function renderZoneDist(){
+  // Map RPE to zones: 1-3=Z1, 4-5=Z2, 6-7=Z3, 8=Z4, 9=Z5, 10=Z5+
+  const zoneCounts={Z1:0,Z2:0,Z3:0,Z4:0,Z5:0};
+  const zoneColors={Z1:"#94a3b8",Z2:"#4ade80",Z3:"#facc15",Z4:"#f97316",Z5:"#fb7185"};
+  let total=0;
+  Object.values(S.logs).forEach(l=>{
+    const rpe=parseInt(l.rpe||0);
+    if(!rpe) return;
+    let z="Z1";
+    if(rpe<=3)z="Z1";else if(rpe<=5)z="Z2";else if(rpe<=7)z="Z3";else if(rpe<=8)z="Z4";else z="Z5";
+    zoneCounts[z]++;total++;
+  });
+
+  if(total===0) return el("div","no-data","Noch keine RPE-Daten vorhanden");
+
+  const wrap=el("div");
+  // 80/20 indicator
+  const z12=((zoneCounts.Z1+zoneCounts.Z2)/total*100).toFixed(0);
+  const intense=((zoneCounts.Z3+zoneCounts.Z4+zoneCounts.Z5)/total*100).toFixed(0);
+  const isGood=parseInt(z12)>=75;
+  const badge=el("div","trend-badge");
+  badge.style.cssText=`background:${isGood?"#052e16":"#1c0a00"};color:${isGood?"#4ade80":"#f97316"}`;
+  badge.textContent=`80/20: ${z12}% locker / ${intense}% intensiv ${isGood?"✅":"⚠️"}`;
+  wrap.appendChild(badge);
+
+  Object.entries(zoneCounts).forEach(([z,count])=>{
+    if(!count) return;
+    const pct=(count/total*100).toFixed(0);
+    const row=el("div","zone-row");
+    row.innerHTML=`<div class="zone-name" style="color:${zoneColors[z]}">${z}</div>
+      <div class="zone-bar-wrap"><div class="zone-bar" style="width:${pct}%;background:${zoneColors[z]}"></div></div>
+      <div class="zone-watts">${pct}% (${count})</div>`;
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+function renderLoadSection(){
+  // Simple CTL/ATL/TSB approximation from RPE * duration
+  const entries=Object.entries(S.logs).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(entries.length<3) return el("div","no-data","Mindestens 3 eingetragene Einheiten nötig");
+
+  // TSS approximation: RPE/10 * duration_hours * 100
+  const tssData=entries.map(([d,l])=>{
+    const rpe=parseFloat(l.rpe||5);
+    const hrs=parseFloat(l.dur||60)/60;
+    return {date:d, tss: Math.round((rpe/10)*hrs*100)};
+  });
+
+  // CTL (42-day), ATL (7-day) exponential weighted moving average
+  let ctl=0,atl=0;
+  const ctlK=1/42, atlK=1/7;
+  tssData.forEach(t=>{
+    ctl = ctl*(1-ctlK)+t.tss*ctlK;
+    atl = atl*(1-atlK)+t.tss*atlK;
+  });
+  const tsb=Math.round(ctl-atl);
+  ctl=Math.round(ctl); atl=Math.round(atl);
+
+  const tsbColor=tsb>5?"#4ade80":tsb>-10?"#facc15":tsb>-30?"#f97316":"#fb7185";
+  const tsbLabel=tsb>5?"Frisch 🟢":tsb>-10?"Moderat 🟡":tsb>-30?"Müde 🟠":"Überbelastet 🔴";
+  const formLabel=tsb>5?"Gute Form für Rennen/Tests":tsb>-10?"Normales Training möglich":tsb>-30?"Erholung empfohlen":"Unbedingt Pause!";
+
+  const wrap=el("div");
+  wrap.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center">
+      <div style="background:#1e293b;border-radius:10px;padding:12px">
+        <div style="font-size:22px;font-weight:700;color:#4ade80">${ctl}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">CTL<br>Fitness</div>
+      </div>
+      <div style="background:#1e293b;border-radius:10px;padding:12px">
+        <div style="font-size:22px;font-weight:700;color:#f97316">${atl}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">ATL<br>Fatigue</div>
+      </div>
+      <div style="background:#1e293b;border-radius:10px;padding:12px">
+        <div style="font-size:22px;font-weight:700;color:${tsbColor}">${tsb>0?"+":""}${tsb}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">TSB<br>Form</div>
+      </div>
+    </div>
+    <div style="background:#1e293b;border-radius:10px;padding:12px;font-size:12px">
+      <div style="color:${tsbColor};font-weight:700;margin-bottom:4px">${tsbLabel}</div>
+      <div style="color:#64748b">${formLabel}</div>
+    </div>
+    <div style="font-size:10px;color:#334155;margin-top:8px;line-height:1.5">CTL=chronische Last (Fitness, 42 Tage), ATL=akute Last (Müdigkeit, 7 Tage), TSB=Form (CTL-ATL). Basiert auf RPE×Dauer-Schätzung.</div>`;
+  return wrap;
+}
+
+
 function rPlan(){
   const d=el("div");d.appendChild(el("div","plan-title","Gesamtplan"));
   PLAN.forEach(p=>{
