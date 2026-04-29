@@ -198,11 +198,66 @@ const TM={ride:{i:"🚴",c:"#4ade80",b:"#052e16"},intervals:{i:"⚡",c:"#facc15"
 const EM=["😴","😓","😐","🙂","😄"];
 const WTs=[["ride","🚴","Rad"],["run","🏃","Laufen"],["strength","💪","Kraft"],["intervals","⚡","Intervalle"],["hiit","🔥","HIIT"],["mobility","🧘","Mobility"],["rest","😴","Ruhe"]];
 const today=new Date().toISOString().slice(0,10);
-let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false};
+let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false,stravaLoading:false,stravaActivities:null,stravaMsg:null};
 function NF(){return{done:true,dur:"",km:"",hm:"",hr:"",rpe:"",feel:"3",notes:"",aT:null,aL:"",aDur:"",aKm:"",aHm:"",aHr:"",aRpe:""}}
 function LS(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
 function SS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function GW(d){return S.ov[d]||PLAN.find(p=>p.date===d)||null;}
+
+// ── STRAVA ──────────────────────────────────────────────────────────────
+function getStravaToken(){return JSON.parse(localStorage.getItem("strava")||"null");}
+function setStravaToken(t){localStorage.setItem("strava",JSON.stringify(t));}
+function clearStrava(){localStorage.removeItem("strava");render();}
+
+// Handle OAuth callback via URL hash
+function handleHashParams(){
+  const hash=window.location.hash.slice(1);
+  if(!hash)return;
+  const p=new URLSearchParams(hash);
+  if(p.get("strava_token")){
+    setStravaToken({access_token:p.get("strava_token"),refresh_token:p.get("strava_refresh"),expires_at:parseInt(p.get("strava_expires")||"0"),athlete:p.get("strava_athlete")||""});
+    window.history.replaceState(null,"","/");
+    S.stravaMsg="✅ Strava verbunden! Hallo "+p.get("strava_athlete")+"!";
+    render();
+    setTimeout(()=>{S.stravaMsg=null;render();},3000);
+  }
+  if(p.get("strava_error")){
+    S.stravaMsg="❌ Strava Fehler: "+p.get("strava_error");
+    window.history.replaceState(null,"","/");
+    render();
+    setTimeout(()=>{S.stravaMsg=null;render();},4000);
+  }
+}
+
+async function loadStravaActivities(){
+  const st=getStravaToken();
+  if(!st){window.location.href="/api/strava-auth";return;}
+  S.stravaLoading=true;S.stravaActivities=null;render();
+  try{
+    const r=await fetch("/api/strava-activities",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({access_token:st.access_token,refresh_token:st.refresh_token,expires_at:st.expires_at})
+    });
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||"Fehler");
+    if(data.new_token){const ns={...st,access_token:data.new_token};setStravaToken(ns);}
+    S.stravaActivities=data.activities||[];
+  }catch(e){S.stravaMsg="❌ "+e.message;}
+  S.stravaLoading=false;render();
+}
+
+function applyStravaActivity(a){
+  S.lf.dur=a.duration?.toString()||"";
+  S.lf.km=a.km?.toString()||"";
+  S.lf.hm=a.hm?.toString()||"";
+  S.lf.hr=a.hr?.toString()||"";
+  S.lf.aL=a.label||"";
+  if(a.type)S.lf.aT=null; // keep planned type, just fill metrics
+  S.stravaActivities=null;
+  S.saved=false;
+  render();
+}
 function FD(d){return new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});}
 function SD(d){const dt=new Date(d+"T12:00:00");return dt.getDate()+"."+(dt.getMonth()+1)+".";}
 function WD(d){return new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short"});}
@@ -335,8 +390,40 @@ function rLog(w){
   const sb=el("button","save-btn",S.saved?"✅ Gespeichert!":"💾 Training speichern");
   sb.onclick=()=>{S.logs[S.sel]={...S.lf,ex:S.ex,wl:w?.label,wt:w?.type};SS("tl",S.logs);S.saved=true;render();};d.appendChild(sb);
   if(S.saved){const ab=el("button","analyze-btn","🤖 Gesamtplan analysieren →");ab.onclick=()=>{S.view="today";render();setTimeout(analyzeFullPlan,100);};d.appendChild(ab);}
+
+  // Strava section
+  d.appendChild(rStravaSection());
   return d;
 }
+function rStravaSection(){
+  const st=getStravaToken();
+  const sec=el("div");
+  sec.style.cssText="margin-top:16px;background:#0f172a;border:1px solid #f9731633;border-radius:14px;padding:16px";
+  const title=el("div");title.style.cssText="font-size:13px;color:#f97316;font-weight:600;margin-bottom:4px";title.textContent="🟠 Strava";sec.appendChild(title);
+  if(S.stravaMsg){const m=el("div");m.style.cssText="font-size:12px;color:#94a3b8;margin-bottom:10px";m.textContent=S.stravaMsg;sec.appendChild(m);}
+  if(S.stravaLoading){const l=el("div");l.style.cssText="font-size:13px;color:#f97316;padding:8px 0";l.textContent="⏳ Aktivitäten werden geladen...";sec.appendChild(l);return sec;}
+  if(S.stravaActivities){
+    const hint=el("div");hint.style.cssText="font-size:11px;color:#64748b;margin-bottom:10px";hint.textContent="Aktivität auswählen um Daten zu übernehmen:";sec.appendChild(hint);
+    S.stravaActivities.forEach(a=>{
+      const btn=el("button");
+      btn.style.cssText="width:100%;padding:10px 12px;background:#1e293b;border:1px solid #334155;border-radius:10px;text-align:left;margin-bottom:6px;color:#e2e8f0;font-family:inherit;cursor:pointer";
+      const type=a.type||"ride";const m=TM[type]||TM.rest;
+      btn.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600">${m.i} ${a.label||a.name}</span><span style="font-size:11px;color:#64748b">${a.date||""}</span></div><div style="font-size:11px;color:#64748b;margin-top:3px">${a.duration?a.duration+"min ":""}${a.km?a.km+"km ":""}${a.hm?a.hm+"hm ":""}${a.hr?"❤️"+a.hr:""}</div>`;
+      btn.onclick=()=>applyStravaActivity(a);sec.appendChild(btn);
+    });
+    const cancel=el("button");cancel.style.cssText="font-size:11px;color:#475569;background:none;border:none;font-family:inherit;cursor:pointer;margin-top:4px";cancel.textContent="✕ Abbrechen";cancel.onclick=()=>{S.stravaActivities=null;render();};sec.appendChild(cancel);
+    return sec;
+  }
+  const sub=el("div");sub.style.cssText="font-size:11px;color:#475569;margin-bottom:10px";
+  sub.textContent=st?"Verbunden als "+st.athlete+" · Letzte Aktivitäten laden":"Verbinde Strava um Daten automatisch zu übernehmen";sec.appendChild(sub);
+  const btn=el("button");
+  btn.style.cssText="width:100%;padding:11px;background:#f97316;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:st?'8px':'0'";
+  btn.textContent=st?"📥 Aktivitäten laden":"🔗 Mit Strava verbinden";
+  btn.onclick=loadStravaActivities;sec.appendChild(btn);
+  if(st){const disc=el("button");disc.style.cssText="font-size:11px;color:#475569;background:none;border:none;font-family:inherit;cursor:pointer;margin-top:6px;display:block";disc.textContent="Verbindung trennen";disc.onclick=clearStrava;sec.appendChild(disc);}
+  return sec;
+}
+
 function rDev(){
   const s=el("div");s.appendChild(el("div","sec-lbl","Abweichung?"));
   if(!S.lf.aT){const b=el("button","dev-empty","+ Abweichung eintragen");b.onclick=()=>{S.lf.aT="ride";render();};s.appendChild(b);}
@@ -375,6 +462,7 @@ function rPlan(){
   });return d;
 }
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+handleHashParams();
 LLF();render();
 
 </script>
