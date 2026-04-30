@@ -407,14 +407,24 @@ async function loadStravaActivities(){
 
 function applyStravaActivity(a, asMain){
   if(asMain){
-    // Apply as main workout
     S.lf.dur=a.duration?.toString()||"";
     S.lf.km=a.km?.toString()||"";
     S.lf.hm=a.hm?.toString()||"";
     S.lf.hr=a.hr?.toString()||"";
     S.lf.aL=a.label||"";
+    // Store extra Strava data for AI analysis
+    S.lf.strava_watts=a.watts||null;
+    S.lf.strava_hr_max=a.hr_max||null;
+    S.lf.strava_cadence=a.cadence||null;
+    S.lf.strava_tss=a.tss_estimate||null;
+    S.lf.strava_kj=a.kj||null;
+    S.lf.strava_suffer=a.suffer_score||null;
+    S.lf.strava_rpe=a.rpe_strava||null;
+    S.lf.strava_trainer=a.trainer||false;
+    S.lf.strava_pr=a.pr_count||0;
+    S.lf.strava_sport=a.sport_type||null;
+    if(a.rpe_strava && !S.lf.rpe) S.lf.rpe=a.rpe_strava.toString();
   } else {
-    // Add as extra workout
     S.ex.push({
       type:a.type||"ride",
       label:a.label||a.name||"",
@@ -422,7 +432,12 @@ function applyStravaActivity(a, asMain){
       km:a.km?.toString()||"",
       hm:a.hm?.toString()||"",
       hr:a.hr?.toString()||"",
-      rpe:""
+      hr_max:a.hr_max?.toString()||"",
+      watts:a.watts?.toString()||"",
+      cadence:a.cadence?.toString()||"",
+      tss:a.tss_estimate?.toString()||"",
+      rpe:a.rpe_strava?.toString()||"",
+      trainer:a.trainer||false,
     });
   }
   S.saved=false;
@@ -445,7 +460,7 @@ async function analyzeFullPlan(){
   const al=Object.entries(S.logs).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14).map(([d,l])=>`${d}:${l.aL||l.wl||l.wt}|${l.dur||"?"}min ${l.km||"?"}km ${l.hm||"?"}hm HF${l.hr||"?"} RPE${l.rpe||"?"}/10 Gefuhl${l.feel||"?"}/5 ${l.done?"✓":"✗"}`).join("\n");
   const extras=S.ex.length>0?S.ex.map(e=>`${e.type} ${e.km||"?"}km ${e.hm||"?"}hm ${e.dur||"?"}min RPE${e.rpe||"?"}`).join(","):"keine";
   const prompt=`Du bist Sportmediziner. Analysiere und optimiere den Trainingsplan.
-HEUTE(${S.sel}): ${w?.label}(${w?.type}),geplant ${w?.duration}min ${w?.zone}. Tatsaechlich:${f.dur}min,${f.km||"?"}km,${f.hm||"?"}hm,HF${f.hr||"?"},RPE${f.rpe||"?"}/10,Gefuehl${f.feel}/5,${f.done?"abgeschlossen":"abgebrochen"}${f.aT?`, Abweichung:${f.aT}-${f.aL},${f.aDur}min,${f.aKm}km,${f.aHm}hm,RPE${f.aRpe}`:""}${S.ex.length>0?`,Zusatz:${extras}`:""}${f.notes?`,Notiz:${f.notes}`:""}
+HEUTE(${S.sel}): ${w?.label}(${w?.type}),geplant ${w?.duration}min ${w?.zone}. Tatsaechlich:${f.dur}min,${f.km||"?"}km,${f.hm||"?"}hm,HF ${f.hr||"?"}bpm${f.strava_hr_max?"/max"+f.strava_hr_max:""},RPE${f.rpe||f.strava_rpe||"?"}/10,Gefuehl${f.feel}/5,${f.done?"abgeschlossen":"abgebrochen"}${f.strava_watts?`,Watt(NP):${f.strava_watts}W`:""}${f.strava_cadence?`,Kadenz:${f.strava_cadence}rpm`:""}${f.strava_tss?`,TSS~${f.strava_tss}`:""}${f.strava_kj?`,Energie:${f.strava_kj}kJ`:""}${f.strava_suffer?`,Belastung:${f.strava_suffer}`:""}${f.strava_trainer?",Indoor-Training":""}${f.strava_pr>0?`,${f.strava_pr} neue Bestleistung(en)`:""}${f.aT?`, Abweichung:${f.aT}-${f.aL},${f.aDur}min,${f.aKm}km,${f.aHm}hm,RPE${f.aRpe}`:""}${S.ex.length>0?`,Zusatz:${extras}`:""}${f.notes?`,Notiz:${f.notes}`:""}
 HISTORIE:\n${al}
 PLAN:\n${fp}
 PRINZIPIEN:CTL/ATL/TSB,80/20,Progressive Overload max 5-10%/Woche,Entlastungswoche nach 3 Wochen(-30-40%),Vereinstraining Mi fix,Tapering ab 13.05.(-40%).HM:<200=leicht,200-500=moderat,500-800=schwer,>800=sehr schwer.NUR notwendige Aenderungen. Mi-Vereinstraining nie aendern.
@@ -508,7 +523,7 @@ function rToday(w){
   c.innerHTML=`<div class="wcard-hdr"><div class="wcard-icon">${m.i}</div><div style="flex:1"><div class="wcard-title" style="color:${m.c}">${w.label}</div><div class="wcard-date">${FD(S.sel)}</div></div>${w.ai_adjusted?'<span class="ai-badge">AI</span>':""}</div>${w.ai_adjusted&&w.adjustment_reason?`<div class="ai-reason">${w.adjustment_reason}</div>`:""}<div class="wcard-desc">${w.description}</div><div class="tags">${w.duration>0?`<span class="tag">⏱ ${w.duration} Min</span>`:""}<span class="tag" style="color:${m.c}">${w.zone}</span><span class="tag">RPE ${w.rpe_target}</span></div>`;
   d.appendChild(c);
   const l=S.logs[S.sel];
-  if(l){const ls=el("div","log-sum");ls.innerHTML=`<div class="log-sum-title">✅ Eingetragen</div><div class="log-tags">${l.dur?`<span>⏱ ${l.dur}Min</span>`:""} ${l.km?`<span>📍 ${l.km}km</span>`:""} ${l.hm?`<span>⛰️ ${l.hm}hm</span>`:""} ${l.hr?`<span>❤️ ${l.hr}bpm</span>`:""} ${l.rpe?`<span>RPE ${l.rpe}</span>`:""} ${l.feel?`<span>${EM[parseInt(l.feel)-1]} ${l.feel}/5</span>`:""}</div>${l.aT?`<div class="log-dev">🔄 ${l.aL||l.aT}${l.aKm?" · "+l.aKm+"km":""}${l.aHm?" · "+l.aHm+"hm":""}</div>`:""} ${(l.ex||[]).map(e=>`<div class="log-extra">➕ ${e.label||e.type}${e.km?" · "+e.km+"km":""}${e.hm?" · "+e.hm+"hm":""}</div>`).join("")} ${l.notes?`<div style="margin-top:8px;font-size:12px;color:#64748b">${l.notes}</div>`:""}`;d.appendChild(ls);}
+  if(l){const ls=el("div","log-sum");ls.innerHTML=`<div class="log-sum-title">✅ Eingetragen</div><div class="log-tags">${l.dur?`<span>⏱ ${l.dur}Min</span>`:""} ${l.km?`<span>📍 ${l.km}km</span>`:""} ${l.hm?`<span>⛰️ ${l.hm}hm</span>`:""} ${l.hr?`<span>❤️ ${l.hr}bpm</span>`:""} ${l.strava_hr_max?`<span>⬆️ ${l.strava_hr_max}bpm</span>`:""} ${l.strava_watts?`<span>⚡ ${l.strava_watts}W</span>`:""} ${l.strava_cadence?`<span>🔄 ${l.strava_cadence}rpm</span>`:""} ${l.strava_tss?`<span>TSS~${l.strava_tss}</span>`:""} ${l.rpe?`<span>RPE ${l.rpe}</span>`:""} ${l.feel?`<span>${EM[parseInt(l.feel)-1]} ${l.feel}/5</span>`:""} ${l.strava_pr>0?`<span>🏆 ${l.strava_pr}PR</span>`:""}</div>${l.aT?`<div class="log-dev">🔄 ${l.aL||l.aT}${l.aKm?" · "+l.aKm+"km":""}${l.aHm?" · "+l.aHm+"hm":""}</div>`:""} ${(l.ex||[]).map(e=>`<div class="log-extra">➕ ${e.label||e.type}${e.km?" · "+e.km+"km":""}${e.hm?" · "+e.hm+"hm":""}</div>`).join("")} ${l.notes?`<div style="margin-top:8px;font-size:12px;color:#64748b">${l.notes}</div>`:""}`;d.appendChild(ls);}
   const ai=el("div","ai-sec");
   if(!l){ai.innerHTML='<div class="ai-title">🤖 KI-Plananalyse</div><div class="ai-sub">Erst Training eintragen</div>';}
   else if(S.aiL){ai.innerHTML='<div class="ai-title">🤖 Analysiere...</div><div class="ai-load"><span style="font-size:28px">⚙️</span><br>Daten werden analysiert...<div style="font-size:11px;color:#475569;margin-top:4px">CTL/ATL · 80/20 · Supercompensation</div></div>';}
@@ -605,11 +620,23 @@ function rStravaSection(){
 
       // Activity info
       const info=el("div");
-      info.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      const tags=[
+        a.duration?a.duration+"min":null,
+        a.km?a.km+"km":null,
+        a.hm?a.hm+"hm":null,
+        a.hr?"❤️"+a.hr:null,
+        a.hr_max?"⬆️"+a.hr_max:null,
+        a.watts?"⚡"+a.watts+"W":null,
+        a.cadence?"🔄"+a.cadence+"rpm":null,
+        a.tss_estimate?"TSS~"+a.tss_estimate:null,
+        a.trainer?"🏠 Indoor":null,
+        a.pr_count>0?"🏆"+a.pr_count+"PR":null,
+      ].filter(Boolean);
+      info.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
         <span style="font-size:13px;font-weight:600;color:var(--text)">${m.i} ${a.label||a.name||"Aktivität"}</span>
         <span style="font-size:10px;color:var(--text3)">${a.date||""}</span>
       </div>
-      <div style="font-size:11px;color:var(--text2)">${a.duration?a.duration+"min ":""}${a.km?a.km+"km ":""}${a.hm?a.hm+"hm ":""}${a.hr?"❤️ "+a.hr+" bpm":""}</div>`;
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${tags.map(t=>`<span style="font-size:10px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:2px 7px;color:var(--text2)">${t}</span>`).join("")}</div>`;
       wrap.appendChild(info);
 
       // Two buttons: main or extra
