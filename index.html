@@ -753,7 +753,7 @@ Antworte NUR mit diesem JSON ohne Text davor/danach:
     const r=await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","x-api-key":k},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:4000,messages:[{role:"user",content:prompt}]})
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:8000,messages:[{role:"user",content:prompt}]})
     });
     const raw=await r.text();
     if(!r.ok){let e=`HTTP ${r.status}`;try{e=JSON.parse(raw)?.error?.message||e;}catch{}throw new Error(e);}
@@ -761,7 +761,16 @@ Antworte NUR mit diesem JSON ohne Text davor/danach:
     const txt=data.content?.map(b=>b.text||"").join("")||"";
     const s=txt.indexOf("{"),e=txt.lastIndexOf("}");
     if(s===-1||e===-1)throw new Error("Kein JSON in Antwort");
-    const parsed=JSON.parse(txt.slice(s,e+1));
+    let parsed;
+    try{ parsed=JSON.parse(txt.slice(s,e+1)); }
+    catch(pe){
+      // Try to recover truncated JSON by closing open arrays/objects
+      let partial=txt.slice(s,e+1);
+      try{
+        const fixed=partial.replace(/,\s*$/, "")+"]}";;
+        parsed=JSON.parse(fixed);
+      }catch{ throw new Error("Antwort zu lang – bitte weniger Wochen im Zeitraum angeben"); }
+    }
     if(!parsed.adjustments)throw new Error("Unvollständige Antwort");
     S.coachResult=parsed;
   }catch(err){S.coachErr="Fehler: "+err.message;}
