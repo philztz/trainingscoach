@@ -234,6 +234,25 @@ button{cursor:pointer}
 .login-btn{width:100%;padding:14px;background:var(--grad);color:var(--bg);border:none;border-radius:12px;font-size:16px;font-weight:700;font-family:inherit;letter-spacing:.3px}
 .login-btn:disabled{opacity:.4}
 .login-err{font-size:13px;color:#fb7185;margin-top:10px;min-height:20px}
+
+.briefing-card{background:linear-gradient(135deg,rgba(0,212,200,.08),rgba(74,158,255,.08));border:1px solid rgba(0,212,200,.2);border-radius:16px;padding:16px;margin-bottom:14px}
+.briefing-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.briefing-icon{font-size:28px}
+.briefing-title{font-size:15px;font-weight:600;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.briefing-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.briefing-text{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px}
+.briefing-loading{text-align:center;padding:16px;color:var(--cyan);font-size:13px}
+.checkin-section{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.checkin-title{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+.checkin-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.checkin-label{font-size:12px;color:var(--text2);width:80px;flex-shrink:0}
+.checkin-pills{display:flex;gap:6px;flex:1}
+.checkin-pill{flex:1;padding:7px 4px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg3);font-size:14px;text-align:center}
+.checkin-pill.on{border-color:var(--cyan);background:rgba(0,212,200,.1)}
+.checkin-send{width:100%;padding:11px;background:var(--grad);color:var(--bg);border:none;border-radius:10px;font-size:13px;font-weight:700;margin-top:8px}
+.checkin-done{font-size:12px;color:var(--cyan);text-align:center;padding:8px}
+.yesterday-mini{background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--text2)}
+.yesterday-title{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
 </style>
 </head>
 <body>
@@ -356,7 +375,7 @@ const TM={ride:{i:"🚴",c:"#00d4c8",b:"rgba(0,212,200,.08)"},intervals:{i:"⚡"
 const EM=["😴","😓","😐","🙂","😄"];
 const WTs=[["ride","🚴","Rad"],["run","🏃","Laufen"],["strength","💪","Kraft"],["intervals","⚡","Intervalle"],["hiit","🔥","HIIT"],["mobility","🧘","Mobility"],["rest","😴","Ruhe"]];
 const today=new Date().toISOString().slice(0,10);
-let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false,stravaLoading:false,stravaActivities:null,stravaMsg:null,coachText:"",coachL:false,coachResult:null,coachErr:null};
+let S={sel:today,view:"today",logs:LS("tl",{}),ov:LS("to",{}),aiA:null,aiL:false,aiE:null,lf:NF(),ex:[],saved:false,stravaLoading:false,stravaActivities:null,stravaMsg:null,coachText:"",coachL:false,coachResult:null,coachErr:null,briefing:LS("tc_briefing_"+new Date().toISOString().slice(0,10),null),briefingL:false,checkin:LS("tc_checkin_"+new Date().toISOString().slice(0,10),null),checkinSleep:null,checkinFeeling:null};
 function NF(){return{done:true,dur:"",km:"",hm:"",hr:"",rpe:"",feel:"3",notes:"",aT:null,aL:"",aDur:"",aKm:"",aHm:"",aHr:"",aRpe:""}}
 function LS(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
 function SS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
@@ -517,7 +536,9 @@ function rTabs(){
 }
 function rToday(w){
   const d=el("div");
-  if(!w){d.innerHTML='<div class="no-w"><div style="font-size:40px">🎉</div><div style="margin-top:12px">Kein Training geplant.</div></div>';return d;}
+  // Briefing always shown
+  d.appendChild(rBriefingSection());
+  if(!w){d.appendChild(el('div','no-w',''));return d;}
   const m=TM[w.type]||TM.rest;
   const c=el("div","wcard");c.style.background=m.b;c.style.borderColor=m.c+"22";
   c.innerHTML=`<div class="wcard-hdr"><div class="wcard-icon">${m.i}</div><div style="flex:1"><div class="wcard-title" style="color:${m.c}">${w.label}</div><div class="wcard-date">${FD(S.sel)}</div></div>${w.ai_adjusted?'<span class="ai-badge">AI</span>':""}</div>${w.ai_adjusted&&w.adjustment_reason?`<div class="ai-reason">${w.adjustment_reason}</div>`:""}<div class="wcard-desc">${w.description}</div><div class="tags">${w.duration>0?`<span class="tag">⏱ ${w.duration} Min</span>`:""}<span class="tag" style="color:${m.c}">${w.zone}</span><span class="tag">RPE ${w.rpe_target}</span></div>`;
@@ -706,6 +727,198 @@ function rExtra(){
 function remEx(i){S.ex.splice(i,1);render();}
 
 // ─── STATS VIEW ──────────────────────────────────────────────────────────────
+
+
+// ─── DAILY BRIEFING ──────────────────────────────────────────────────────────
+
+function todayBriefingKey(){return "tc_briefing_"+today;}
+function todayCheckinKey(){return "tc_checkin_"+today;}
+
+function getYesterdayStr(){
+  const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);
+}
+
+async function generateBriefing(sleep, feeling){
+  S.briefingL=true; render();
+  const k=getApiKey(); if(!k){S.briefingL=false;render();return;}
+
+  const w=GW(today);
+  const yesterday=getYesterdayStr();
+  const yl=S.logs[yesterday];
+  const yw=GW(yesterday);
+
+  // Tomorrow's workout
+  const tmr=new Date(today+"T12:00:00");tmr.setDate(tmr.getDate()+1);
+  const tmrStr=tmr.toISOString().slice(0,10);
+  const tw=GW(tmrStr);
+
+  // Recent load (last 7 days TSS estimate)
+  const recentLoad=Object.entries(S.logs)
+    .filter(([d])=>d>=getDateMinus(7)&&d<=today)
+    .map(([d,l])=>({date:d,rpe:parseFloat(l.rpe||5),dur:parseFloat(l.dur||60),feel:l.feel}));
+
+  const avgRpe=recentLoad.length>0?(recentLoad.reduce((s,l)=>s+l.rpe,0)/recentLoad.length).toFixed(1):"-";
+  const totalMin=recentLoad.reduce((s,l)=>s+l.dur,0);
+
+  const prompt=`Du bist ein persönlicher Radsport-Coach. Gib dem Athleten ein kurzes, motivierendes Morgenbriefing auf Deutsch.
+
+HEUTE (${today}, ${new Date(today+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"})}):
+- Geplante Einheit: ${w?.label||"Ruhetag"} (${w?.type||"rest"})
+- Beschreibung: ${w?.description||"Erholung"}
+- Dauer: ${w?.duration||0} Min, Zone: ${w?.zone||"-"}
+- Ziel-RPE: ${w?.rpe_target||"-"}
+- Trainingsphase: ${w?.phase||"-"}
+
+GESTRIGE EINHEIT:
+${yl?`- ${yw?.label||"Training"}: ${yl.dur||"?"}min, ${yl.km||"?"}km, ${yl.hm||"?"}hm, HF ${yl.hr||"?"}, RPE ${yl.rpe||"?"}/10, Gefühl ${yl.feel||"?"}/5${yl.strava_watts?`, ${yl.strava_watts}W`:""}${yl.strava_tss?`, TSS~${yl.strava_tss}`:""}${yl.notes?`, Notiz: "${yl.notes}"`:""}`:
+"- Kein Training eingetragen"}
+
+MORGIGE EINHEIT:
+- ${tw?.label||"Ruhetag"} (${tw?.duration||0}min, ${tw?.zone||"-"})
+
+TRAININGSBELASTUNG (letzte 7 Tage):
+- ${recentLoad.length} Einheiten, ${Math.round(totalMin/60*10)/10}h Gesamtvolumen, Ø RPE ${avgRpe}
+
+TAGESFORM DES ATHLETEN:
+- Schlafqualität: ${sleep}/5 (1=schlecht, 5=ausgezeichnet)
+- Aktuelles Wohlbefinden: ${feeling}/5 (1=erschöpft, 5=top)
+
+ANWEISUNG:
+Schreibe ein Morgenbriefing in 3-4 kurzen Abschnitten:
+1. Kurzer Rückblick auf gestern (1-2 Sätze, nur wenn relevant)
+2. Was heute ansteht und WARUM diese Einheit jetzt wichtig ist (Trainingsprinzip erklären)
+3. Konkrete Empfehlung basierend auf Schlaf & Wohlbefinden (anpassen falls nötig)
+4. Ein motivierender Abschlusssatz
+
+Ton: direkt, persönlich, wie ein erfahrener Trainer. Nicht zu lang (max 120 Wörter).
+${(parseInt(sleep)<=2||parseInt(feeling)<=2)?'WICHTIG: Schlaf/Wohlbefinden sind niedrig – empfehle Intensitätsreduktion oder aktive Erholung!':""}
+
+Antworte NUR mit dem Briefing-Text, kein JSON, keine Überschriften.`;
+
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","x-api-key":k},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:400,messages:[{role:"user",content:prompt}]})
+    });
+    const raw=await r.text();
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data=JSON.parse(raw);
+    const text=data.content?.map(b=>b.text||"").join("")||"";
+    // Save briefing for today
+    localStorage.setItem(todayBriefingKey(), JSON.stringify({text,sleep,feeling,ts:Date.now()}));
+    S.briefing={text,sleep,feeling,ts:Date.now()};
+  }catch(err){
+    S.briefing={text:"Briefing konnte nicht geladen werden. Bitte API-Key prüfen.",sleep,feeling,error:true};
+  }
+  S.briefingL=false;
+  render();
+}
+
+function getDateMinus(days){
+  const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-days);return d.toISOString().slice(0,10);
+}
+
+function saveCheckin(sleep,feeling){
+  const data={sleep,feeling,ts:Date.now()};
+  localStorage.setItem(todayCheckinKey(),JSON.stringify(data));
+  S.checkin=data;
+  S.checkinSleep=sleep;
+  S.checkinFeeling=feeling;
+  generateBriefing(sleep,feeling);
+}
+
+function rBriefingSection(){
+  const wrap=el("div","briefing-card");
+
+  // Check if already checked in today
+  const savedCheckin=JSON.parse(localStorage.getItem(todayCheckinKey())||"null");
+  const savedBriefing=JSON.parse(localStorage.getItem(todayBriefingKey())||"null");
+
+  // Header
+  const hdr=el("div","briefing-header");
+  const now=new Date();
+  const hour=now.getHours();
+  const greeting=hour<12?"Guten Morgen":hour<18?"Guten Tag":"Guten Abend";
+  hdr.innerHTML=`<div class="briefing-icon">${hour<12?"🌅":hour<18?"☀️":"🌙"}</div>
+    <div><div class="briefing-title">${greeting}!</div>
+    <div class="briefing-sub">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div></div>`;
+  wrap.appendChild(hdr);
+
+  // Yesterday quick summary
+  const yl=S.logs[getYesterdayStr()];
+  if(yl){
+    const yw=GW(getYesterdayStr());
+    const ysec=el("div","yesterday-mini");
+    ysec.innerHTML=`<div class="yesterday-title">Gestern</div>
+      <div>${yw?.label||"Training"}: ${yl.dur||"?"}min${yl.km?" · "+yl.km+"km":""}${yl.hm?" · "+yl.hm+"hm":""}${yl.hr?" · ❤️"+yl.hr:""}${yl.strava_watts?" · ⚡"+yl.strava_watts+"W":""}${yl.rpe?" · RPE "+yl.rpe+"/10":""} ${yl.feel?EM[parseInt(yl.feel)-1]:""}</div>`;
+    wrap.appendChild(ysec);
+  }
+
+  // If loading
+  if(S.briefingL){
+    wrap.appendChild(el("div","briefing-loading","⏳ Briefing wird erstellt..."));
+    return wrap;
+  }
+
+  // If briefing exists
+  if(savedBriefing){
+    wrap.appendChild(el("div","briefing-text",savedBriefing.text));
+    // Show refresh option
+    const ref=el("button");
+    ref.style.cssText="font-size:10px;color:var(--text3);background:none;border:none;font-family:inherit;cursor:pointer;display:block;margin-top:4px";
+    ref.textContent="↺ Neu generieren";
+    ref.onclick=()=>{localStorage.removeItem(todayBriefingKey());S.briefing=null;render();};
+    wrap.appendChild(ref);
+    return wrap;
+  }
+
+  // Check-in form
+  const ci=el("div","checkin-section");
+  ci.appendChild(el("div","checkin-title","Kurzer Morgen-Check-in"));
+
+  // Sleep quality
+  const sleepRow=el("div","checkin-row");
+  sleepRow.innerHTML='<div class="checkin-label">😴 Schlaf</div>';
+  const sleepPills=el("div","checkin-pills");
+  ["😴","😕","😐","🙂","😄"].forEach((emoji,i)=>{
+    const v=(i+1).toString();
+    const p=el("button","checkin-pill"+(S.checkinSleep===v?" on":""),emoji);
+    p.title=["Sehr schlecht","Schlecht","OK","Gut","Ausgezeichnet"][i];
+    p.onclick=()=>{S.checkinSleep=v;render();};
+    sleepPills.appendChild(p);
+  });
+  sleepRow.appendChild(sleepPills);
+  ci.appendChild(sleepRow);
+
+  // Feeling/wellbeing
+  const feelRow=el("div","checkin-row");
+  feelRow.innerHTML='<div class="checkin-label">💪 Gefühl</div>';
+  const feelPills=el("div","checkin-pills");
+  ["🤒","😓","😐","🙂","🔥"].forEach((emoji,i)=>{
+    const v=(i+1).toString();
+    const p=el("button","checkin-pill"+(S.checkinFeeling===v?" on":""),emoji);
+    p.title=["Erschöpft","Müde","OK","Gut","Top-Form"][i];
+    p.onclick=()=>{S.checkinFeeling=v;render();};
+    feelPills.appendChild(p);
+  });
+  feelRow.appendChild(feelPills);
+  ci.appendChild(feelRow);
+
+  if(S.checkinSleep&&S.checkinFeeling){
+    const sendBtn=el("button","checkin-send","Briefing erstellen ✨");
+    sendBtn.onclick=()=>saveCheckin(S.checkinSleep,S.checkinFeeling);
+    ci.appendChild(sendBtn);
+  } else {
+    const hint=el("div");
+    hint.style.cssText="font-size:11px;color:var(--text3);text-align:center;padding:6px 0";
+    hint.textContent="Beides auswählen für dein persönliches Briefing";
+    ci.appendChild(hint);
+  }
+
+  wrap.appendChild(ci);
+  return wrap;
+}
 
 function getFTP(){
   // Check localStorage for manually saved FTP
